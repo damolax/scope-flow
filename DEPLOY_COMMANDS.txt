@@ -1,0 +1,15 @@
+EXACT GIT BASH COMMANDS FOR https://github.com/damolax/scope-flow
+
+cd ~/Downloads
+rm -rf scope-flow-operations
+unzip -q -o scope-flow-operations.zip -d scope-flow-operations
+cd scope-flow-operations
+chmod +x DEPLOY_ONCE.sh
+./DEPLOY_ONCE.sh
+
+AFTER THE PUSH
+1. Run the complete supabase/schema.sql in the Supabase project connected to Vercel.
+2. Keep the existing six authentication/database environment variables.
+3. Optional: add RESEND_API_KEY and EMAIL_FROM for automatic branded emails.
+4. Redeploy without cache if Vercel environment variables were changed.
+5. Test proposal approval, two invoice links, payment confirmation, countdown, calendar, backup restore and archive/restore in an Incognito browser.

@@ -1,0 +1,33 @@
+{
+  "name": "scopeflow-proposals",
+  "version": "6.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.110.7",
+    "lucide-react": "0.468.0",
+    "next": "16.2.10",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "pdf-lib": "1.17.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "typescript": "5.7.2"
+  },
+  "overrides": {
+    "postcss": "8.5.20"
+  },
+  "engines": {
+    "node": "22.x"
+  },
+  "packageManager": "npm@10.9.2",
+  "description": "Proposal, invoice, payment confirmation and delivery countdown workspace for independent professionals."
+}
