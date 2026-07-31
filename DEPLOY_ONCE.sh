@@ -2,29 +2,38 @@
 set -euo pipefail
 
 REPO_URL="https://github.com/damolax/scope-flow.git"
+SOURCE_DIR="$(pwd)"
+DEPLOY_DIR="$HOME/scope-flow-polish-deploy"
 
-if [[ ! -f package.json ]]; then
-  echo "ERROR: package.json was not found. Open Git Bash inside the extracted scope-flow-operations folder."
+if [[ ! -f "$SOURCE_DIR/package.json" ]]; then
+  echo "ERROR: package.json was not found. Open Git Bash inside the extracted scope-flow-polish folder."
   exit 1
 fi
 
-# Local npm validation is intentionally skipped because some Windows npm 11 builds
-# can terminate with "Exit handler never called!". Vercel will install and build.
-rm -rf node_modules .next
+rm -rf "$DEPLOY_DIR"
+git clone "$REPO_URL" "$DEPLOY_DIR"
+cd "$DEPLOY_DIR"
 
-git init
-git branch -M main
-git add .
+git checkout main 2>/dev/null || git checkout -b main
+find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+
+(
+  cd "$SOURCE_DIR"
+  tar --exclude='.git' --exclude='node_modules' --exclude='.next' -cf - .
+) | tar -xf -
+
+rm -rf node_modules .next
+git add -A
+
 if git diff --cached --quiet; then
-  echo "No new files to commit."
+  echo "No new ScopeFlow changes were found."
 else
-  git -c user.name="Oyeola" -c user.email="oyekunleolalekan3168@gmail.com" commit -m "Deploy ScopeFlow 6 operations and delivery workflow"
+  git -c user.name="Oyeola" \
+      -c user.email="oyekunleolalekan3168@gmail.com" \
+      commit -m "Deploy ScopeFlow 6.1 polish and account controls"
+  git push origin main
 fi
 
-git remote remove origin 2>/dev/null || true
-git remote add origin "$REPO_URL"
-git push -u origin main --force
-
 echo
-echo "ScopeFlow 6 source was pushed successfully to $REPO_URL"
-echo "Next: import the repository into Vercel. Vercel will install and build the dependencies."
+echo "ScopeFlow 6.1 was pushed successfully to $REPO_URL"
+echo "Vercel should start a new deployment automatically."

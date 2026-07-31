@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowRight, CheckCircle2, FileCheck2, Loader2, MailCheck, Sparkles } from "lucide-react";
+import { ArrowRight, CheckCircle2, FileCheck2, Loader2, MailCheck } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { browserAuthConfigured, supabaseBrowser } from "@/lib/supabase-browser";
+import ScopeFlowMark from "@/components/ScopeFlowMark";
 
 async function establishAppSession(accessToken: string) {
   const response = await fetch("/api/auth/session", {
@@ -31,6 +32,9 @@ export default function LoginPage() {
     fetch("/api/auth/me", { cache: "no-store" }).then((response) => {
       if (response.ok) window.location.href = "/app";
     });
+    if (new URLSearchParams(window.location.search).get("account") === "deleted") {
+      setNotice("Your ScopeFlow account and workspace were deleted successfully.");
+    }
   }, []);
 
   async function submit(event: FormEvent) {
@@ -102,7 +106,7 @@ export default function LoginPage() {
 
   return <main className="login-page">
     <section className="login-showcase">
-      <div className="login-brand"><div className="brand-mark"><Sparkles size={20} /></div><div><strong>ScopeFlow</strong><span>Flexible proposals, clearly approved</span></div></div>
+      <div className="login-brand"><div className="brand-mark"><ScopeFlowMark size={22} /></div><div><strong>ScopeFlow</strong><span>Flexible proposals, clearly approved</span></div></div>
       <div className="showcase-copy"><span className="login-eyebrow">Built for independent professionals</span><h1>Make every offer easier to understand—and easier to approve.</h1><p>Create a branded proposal, let clients select optional scope or suggest prices, then lock the final agreement into a downloadable document.</p><div className="showcase-points"><span><CheckCircle2 size={19} /> Secure client links with no client login</span><span><CheckCircle2 size={19} /> Simple negotiation and incentive progress</span><span><CheckCircle2 size={19} /> Exact approved proposal and invoice PDFs</span></div></div>
       <div className="showcase-card"><div><FileCheck2 size={22} /><span><strong>Website redesign proposal</strong><small>Approved agreement ready</small></span></div><div className="showcase-value"><span>Final approved total</span><strong>$4,275</strong></div><div className="showcase-progress"><span /><span /><span /><span /></div></div>
     </section>

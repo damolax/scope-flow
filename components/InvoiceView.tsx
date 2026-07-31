@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  CalendarDays, CheckCircle2, Clock3, Download, FileCheck2, LockKeyhole, Mail,
+  CalendarDays, CheckCircle2, Clock3, Download, FileCheck2, Loader2, LockKeyhole, Mail,
   ReceiptText, Send, ShieldCheck, Timer, X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -11,6 +11,7 @@ import {
   remainingTimeLabel, totalsFor, urgencyLabel,
 } from "@/lib/helpers";
 import { InvoiceInfo, Proposal } from "@/lib/types";
+import LoadingScreen from "./LoadingScreen";
 
 export default function InvoiceView({ token }: { token: string }) {
   const [proposal, setProposal] = useState<Proposal | null>(null);
@@ -66,7 +67,7 @@ export default function InvoiceView({ token }: { token: string }) {
     finally { setSubmitting(false); }
   }
 
-  if (loading) return <main className="client-loading"><div className="client-brand-mark"><ReceiptText size={21} /></div><strong>Opening invoice</strong><span>Preparing the secure invoice page…</span></main>;
+  if (loading) return <LoadingScreen className="client-loading" title="Opening invoice" text="Preparing the secure invoice page…" icon={ReceiptText} />;
   if (!proposal || !snapshot || !invoice || !totals) return <main className="client-error"><X size={26} /><h1>Invoice unavailable</h1><p>{error || "The invoice has not been created or the link is no longer available."}</p></main>;
 
   const paid = invoice.status === "paid";
@@ -101,7 +102,7 @@ export default function InvoiceView({ token }: { token: string }) {
           <div className="payment-instructions"><ShieldCheck size={19} /><div><strong>Payment instructions</strong><p>{snapshot.paymentInstructions}</p></div></div>
         </section>
 
-        <aside className="invoice-side-card"><ReceiptText size={25} /><span>Amount due</span><strong>{money(invoice.amountDue, snapshot.currency)}</strong><small>Due {dateLabel(invoice.dueAt)}</small><a className="primary" href={`/api/pdf/${token}?type=invoice`}><Download size={18} /> Download invoice PDF</a>{!paid && !paymentReported && <button className="secondary" onClick={() => setReportOpen(!reportOpen)}><Send size={17} /> I have sent payment</button>}<a className="secondary" href={`mailto:${snapshot.company.email}?subject=${encodeURIComponent(`Question about invoice ${invoice.number}`)}`}><Mail size={17} /> Ask a question</a>{reportOpen && <div className="payment-report-form"><label><span>Your name</span><input value={name} onChange={(event) => setName(event.target.value)} /></label><label><span>Email</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label><label><span>Payment note <em>optional</em></span><textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Reference or method used" /></label>{error && <div className="client-form-error">{error}</div>}<button className="primary" disabled={submitting} onClick={reportPayment}>{submitting ? "Sending…" : "Report payment"}</button><small>This does not mark the invoice paid. The business owner must verify it.</small></div>}<div className="invoice-next-steps"><strong>What happens next?</strong><ol><li>Follow the payment instructions.</li><li>Report payment if you want to notify the business.</li><li>The delivery countdown begins only after the business confirms payment.</li></ol></div></aside>
+        <aside className="invoice-side-card"><ReceiptText size={25} /><span>Amount due</span><strong>{money(invoice.amountDue, snapshot.currency)}</strong><small>Due {dateLabel(invoice.dueAt)}</small><a className="primary" href={`/api/pdf/${token}?type=invoice`}><Download size={18} /> Download invoice PDF</a>{!paid && !paymentReported && <button className="secondary" onClick={() => setReportOpen(!reportOpen)}><Send size={17} /> I have sent payment</button>}<a className="secondary" href={`mailto:${snapshot.company.email}?subject=${encodeURIComponent(`Question about invoice ${invoice.number}`)}`}><Mail size={17} /> Ask a question</a>{reportOpen && <div className="payment-report-form"><label><span>Your name</span><input value={name} onChange={(event) => setName(event.target.value)} /></label><label><span>Email</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label><label><span>Payment note <em>optional</em></span><textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Reference or method used" /></label>{error && <div className="client-form-error">{error}</div>}<button className="primary" disabled={submitting} onClick={reportPayment}>{submitting ? <><Loader2 className="spin" size={17} /> Sending…</> : "Report payment"}</button><small>This does not mark the invoice paid. The business owner must verify it.</small></div>}<div className="invoice-next-steps"><strong>What happens next?</strong><ol><li>Follow the payment instructions.</li><li>Report payment if you want to notify the business.</li><li>The delivery countdown begins only after the business confirms payment.</li></ol></div></aside>
       </div>
     </div>
     <footer className="client-footer"><span>{snapshot.company.name}</span><small>Secure invoice powered by ScopeFlow</small></footer>

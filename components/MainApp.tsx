@@ -1,12 +1,12 @@
 "use client";
 
 import {
-  Archive, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, CalendarDays,
+  AlertTriangle, Archive, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, CalendarDays,
   BriefcaseBusiness, Check, CheckCircle2, ChevronDown, CircleDollarSign,
   Clock3, Copy, Download, Eye, FileCheck2, FileClock, FilePlus2, FileText, FolderArchive,
   Gauge, Home, ImagePlus, Layers3, Link2, ListChecks, LockKeyhole, LogOut, Mail, Menu,
-  MoreHorizontal, PackagePlus, Pause, Pencil, Play, Plus, ReceiptText, RefreshCcw, RotateCcw, Save,
-  Search, Send, Settings, ShieldCheck, Sparkles, Timer, Trash2, Upload, UploadCloud, UserRound, X,
+  Loader2, MoreHorizontal, PackagePlus, Pause, Pencil, Play, Plus, ReceiptText, RefreshCcw, RotateCcw, Save,
+  Search, Send, Settings, ShieldCheck, Sparkles, Timer, Trash2, Upload, UploadCloud, UserRound, UserX, X,
 } from "lucide-react";
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { backupRepository, cloudMode, proposalsRepository, workspaceRepository } from "@/lib/client-repository";
@@ -22,6 +22,8 @@ import {
   ScopeFlowBackup, ServiceCatalogItem, SessionUser, WorkspaceSettings,
 } from "@/lib/types";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import LoadingScreen from "./LoadingScreen";
+import ScopeFlowMark from "./ScopeFlowMark";
 
 type Page = "dashboard" | "proposals" | "services" | "settings";
 type Toast = { tone: "success" | "error" | "info"; message: string } | null;
@@ -103,6 +105,9 @@ export default function MainApp() {
   const [serviceEditor, setServiceEditor] = useState<ServiceCatalogItem | null>(null);
   const [invoiceEditor, setInvoiceEditor] = useState<InvoiceDraft | null>(null);
   const [restorePreview, setRestorePreview] = useState<RestorePreview>(null);
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [, setClockTick] = useState(0);
   const lastSavedSignature = useRef("");
@@ -588,6 +593,30 @@ ${proposal.company.name}`);
     finally { setSaving(false); }
   }
 
+  async function deleteAccount() {
+    if (!user || user.isAdmin) return;
+    if (deleteConfirmation.trim().toLowerCase() !== user.email.toLowerCase()) {
+      show("Enter your account email exactly to confirm deletion.", "error");
+      return;
+    }
+    setDeletingAccount(true);
+    try {
+      downloadBlob(JSON.stringify(createBackup(workspace, proposals), null, 2), `scopeflow-final-backup-${new Date().toISOString().slice(0, 10)}.json`, "application/json");
+      const response = await fetch("/api/account", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmation: deleteConfirmation }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Could not delete the account.");
+      try { await supabaseBrowser().auth.signOut(); } catch {}
+      window.location.href = "/login?account=deleted";
+    } catch (error: any) {
+      show(error.message || "Could not delete the account", "error");
+      setDeletingAccount(false);
+    }
+  }
+
   function updateCompany<K extends keyof WorkspaceSettings["company"]>(key: K, value: WorkspaceSettings["company"][K]) {
     setWorkspace((current) => ({ ...current, company: { ...current.company, [key]: value } }));
   }
@@ -595,19 +624,20 @@ ${proposal.company.name}`);
   async function uploadLogo(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (!file.type.match(/^image\/(png|jpeg|webp)$/)) { show("Use a PNG, JPG or WebP logo", "error"); return; }
     if (file.size > 900_000) { show("Use a logo smaller than 900 KB", "error"); return; }
     const reader = new FileReader();
     reader.onload = () => updateCompany("logoDataUrl", String(reader.result || ""));
     reader.readAsDataURL(file);
   }
 
-  if (loading) return <main className="app-loading"><div className="brand-orb"><Sparkles size={22} /></div><strong>Opening ScopeFlow</strong><span>Loading your business workspace…</span></main>;
+  if (loading) return <LoadingScreen title="Opening ScopeFlow" text="Loading your business workspace…" />;
 
   return (
     <div className="app-shell" style={{ "--accent": workspace.company.accent } as React.CSSProperties}>
       {toast && <div className={`toast ${toast.tone}`}>{toast.tone === "success" ? <CheckCircle2 size={18} /> : toast.tone === "error" ? <X size={18} /> : <Bell size={18} />}<span>{toast.message}</span></div>}
       <aside className={`sidebar ${mobileNav ? "open" : ""}`}>
-        <div className="sidebar-brand"><div className="brand-orb">{workspace.company.logoDataUrl ? <img src={workspace.company.logoDataUrl} alt="" /> : <Sparkles size={20} />}</div><div><strong>ScopeFlow</strong><span>{workspace.company.name}</span></div><button className="mobile-close" aria-label="Close navigation" onClick={() => setMobileNav(false)}><X size={18} /></button></div>
+        <div className="sidebar-brand"><div className="brand-orb">{workspace.company.logoDataUrl ? <img src={workspace.company.logoDataUrl} alt="" /> : <ScopeFlowMark size={21} />}</div><div><strong>ScopeFlow</strong><span>{workspace.company.name}</span></div><button className="mobile-close" aria-label="Close navigation" onClick={() => setMobileNav(false)}><X size={18} /></button></div>
         <nav>{nav.map((item) => <button key={item.id} className={page === item.id && !editor ? "active" : ""} onClick={() => { setPage(item.id); setEditor(null); setMobileNav(false); }}><item.icon size={18} /><span>{item.label}</span>{item.id === "dashboard" && attention.length > 0 && <em>{attention.length}</em>}</button>)}</nav>
         <div className="sidebar-bottom">
           <div className="sidebar-account"><span>{user?.name?.slice(0, 1).toUpperCase() || "U"}</span><div><strong>{user?.name || "Account"}</strong><small>{user?.email || ""}</small></div></div>
@@ -641,13 +671,14 @@ ${proposal.company.name}`);
         ) : page === "services" ? (
           <ServicesPage services={workspace.services} currency={workspace.company.currency} categories={categories} categoryFilter={categoryFilter} setCategoryFilter={setCategoryFilter} onEdit={(service: ServiceCatalogItem) => setServiceEditor(structuredClone(service))} onNew={() => setServiceEditor(newService())} />
         ) : (
-          <SettingsPage workspace={workspace} setWorkspace={setWorkspace} updateCompany={updateCompany} uploadLogo={uploadLogo} save={() => saveWorkspace()} exportData={exportData} selectBackupFile={selectBackupFile} saving={saving} user={user} />
+          <SettingsPage workspace={workspace} setWorkspace={setWorkspace} updateCompany={updateCompany} uploadLogo={uploadLogo} save={() => saveWorkspace()} exportData={exportData} selectBackupFile={selectBackupFile} saving={saving} user={user} onDeleteAccount={() => { setDeleteConfirmation(""); setDeleteAccountOpen(true); }} />
         )}
       </main>
 
       {serviceEditor && <ServiceModal service={serviceEditor} setService={setServiceEditor} onClose={() => setServiceEditor(null)} onSave={saveService} />}
       {invoiceEditor && <InvoiceModal draft={invoiceEditor} setDraft={setInvoiceEditor} onClose={() => setInvoiceEditor(null)} onSave={saveInvoiceDocument} />}
       {restorePreview && <RestoreModal preview={restorePreview} onClose={() => setRestorePreview(null)} onRestore={restoreBackup} saving={saving} />}
+      {deleteAccountOpen && user && <DeleteAccountModal user={user} confirmation={deleteConfirmation} setConfirmation={setDeleteConfirmation} deleting={deletingAccount} onClose={() => !deletingAccount && setDeleteAccountOpen(false)} onDelete={deleteAccount} />}
     </div>
   );
 }
@@ -695,16 +726,33 @@ function ServicesPage({ services, currency, categories, categoryFilter, setCateg
   </div>;
 }
 
-function SettingsPage({ workspace, updateCompany, uploadLogo, save, exportData, selectBackupFile, saving, user }: any) {
+function SettingsPage({ workspace, updateCompany, uploadLogo, save, exportData, selectBackupFile, saving, user, onDeleteAccount }: any) {
   const company = workspace.company;
-  return <div className="page-content"><div className="page-heading"><div><span className="eyebrow">Defaults</span><h1>Settings</h1><p>Your branding, documents and delivery defaults are copied into each new proposal.</p></div><button className="primary" onClick={save} disabled={saving}><Save size={18} /> Save settings</button></div>
+  return <div className="page-content"><div className="page-heading"><div><span className="eyebrow">Defaults</span><h1>Settings</h1><p>Your branding, documents and delivery defaults are copied into each new proposal.</p></div><button className="primary" onClick={save} disabled={saving}>{saving ? <><Loader2 className="spin" size={18} /> Saving settings…</> : <><Save size={18} /> Save settings</>}</button></div>
     <div className="settings-grid">
       <section className="panel settings-section"><div className="section-title"><BriefcaseBusiness size={19} /><div><h2>Business</h2><p>Shown on proposals, invoices and emails.</p></div></div><div className="logo-setting"><div className="logo-preview">{company.logoDataUrl ? <img src={company.logoDataUrl} alt="Business logo" /> : <ImagePlus size={24} />}</div><label className="secondary button-label"><Upload size={16} /> Upload logo<input type="file" accept="image/png,image/jpeg" onChange={uploadLogo} /></label></div><div className="form-grid two"><Field label="Business name"><input value={company.name} onChange={(e) => updateCompany("name", e.target.value)} /></Field><Field label="Business email"><input type="email" value={company.email} onChange={(e) => updateCompany("email", e.target.value)} /></Field><Field label="Phone"><input value={company.phone} onChange={(e) => updateCompany("phone", e.target.value)} /></Field><Field label="Website"><input value={company.website} onChange={(e) => updateCompany("website", e.target.value)} /></Field><Field label="Address"><input value={company.address} onChange={(e) => updateCompany("address", e.target.value)} /></Field><Field label="Brand colour"><input type="color" value={company.accent} onChange={(e) => updateCompany("accent", e.target.value)} /></Field></div></section>
       <section className="panel settings-section"><div className="section-title"><BookOpen size={19} /><div><h2>Documents</h2><p>Simple defaults, editable per proposal.</p></div></div><div className="form-grid two"><Field label="Default currency"><select value={company.currency} onChange={(e) => updateCompany("currency", e.target.value)}>{currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></Field><Field label="Proposal validity"><div className="input-suffix"><input type="number" min="1" value={company.defaultValidityDays} onChange={(e) => updateCompany("defaultValidityDays", Number(e.target.value))} /><span>days</span></div></Field><Field label="Proposal prefix"><input value={company.proposalPrefix} onChange={(e) => updateCompany("proposalPrefix", e.target.value.toUpperCase())} /></Field><Field label="Invoice prefix"><input value={company.invoicePrefix} onChange={(e) => updateCompany("invoicePrefix", e.target.value.toUpperCase())} /></Field><Field label="Additional-work prefix"><input value={company.changeOrderPrefix || "CHG"} onChange={(e) => updateCompany("changeOrderPrefix", e.target.value.toUpperCase())} /></Field></div><Field label="Default terms and conditions" hint="Copied into new proposals; existing agreements stay unchanged."><textarea rows={8} value={company.defaultTerms} onChange={(e) => updateCompany("defaultTerms", e.target.value)} /></Field><Field label="Default payment instructions" hint="Information only. ScopeFlow does not process payments."><textarea rows={4} value={company.defaultPaymentInstructions} onChange={(e) => updateCompany("defaultPaymentInstructions", e.target.value)} /></Field><label className="toggle-row"><input type="checkbox" checked={company.useTax} onChange={(e) => updateCompany("useTax", e.target.checked)} /><span><strong>Use tax fields</strong><small>Keep this off to hide tax everywhere.</small></span></label>{company.useTax && <div className="form-grid two"><Field label="Tax label"><input value={company.taxLabel} onChange={(e) => updateCompany("taxLabel", e.target.value)} /></Field><Field label="Default rate"><div className="input-suffix"><input type="number" min="0" max="100" value={company.defaultTaxPercent} onChange={(e) => updateCompany("defaultTaxPercent", Number(e.target.value))} /><span>%</span></div></Field></div>}</section>
       <section className="panel settings-section"><div className="section-title"><Timer size={19} /><div><h2>Delivery countdown</h2><p>Used when paid projects begin.</p></div></div><div className="form-grid two"><Field label="Default timezone"><input value={company.defaultTimezone || "UTC"} onChange={(e) => updateCompany("defaultTimezone", e.target.value)} placeholder="Africa/Lagos" /></Field><Field label="Default delivery time"><input type="time" value={company.defaultDeliveryTime || "17:00"} onChange={(e) => updateCompany("defaultDeliveryTime", e.target.value)} /></Field><Field label="Due soon threshold"><div className="input-suffix"><input type="number" min="1" value={company.dueSoonHours || 72} onChange={(e) => updateCompany("dueSoonHours", Number(e.target.value))} /><span>hours</span></div></Field><Field label="Almost due threshold"><div className="input-suffix"><input type="number" min="1" value={company.almostDueHours || 12} onChange={(e) => updateCompany("almostDueHours", Number(e.target.value))} /><span>hours</span></div></Field></div></section>
       <section className="panel settings-section"><div className="section-title"><UserRound size={19} /><div><h2>Account security</h2><p>Your login is separate from the business email shown to clients.</p></div></div><div className="account-security-card"><span><strong>{user?.name || "ScopeFlow owner"}</strong><small>{user?.email}</small></span>{user?.isAdmin && <em><ShieldCheck size={14} /> Platform admin</em>}</div><div className="account-security-actions"><a className="secondary" href="/reset-password"><ShieldCheck size={17} /> Change password</a>{user?.isAdmin && <a className="secondary" href="/admin"><ShieldCheck size={17} /> Admin console</a>}</div></section>
       <section className="panel settings-section"><div className="section-title"><Download size={19} /><div><h2>Backup and restore</h2><p>Download a portable copy or restore a previous ScopeFlow backup.</p></div></div><div className="backup-actions"><button className="secondary" onClick={exportData}><Download size={17} /> Download backup</button><label className="secondary button-label"><UploadCloud size={17} /> Restore backup<input type="file" accept="application/json,.json" onChange={selectBackupFile} /></label></div><small className="settings-note">Restore validates the file first. Replace mode automatically downloads a safety backup before changing current data.</small></section>
+      <section className="panel settings-section danger-zone"><div className="section-title"><UserX size={19} /><div><h2>Account deletion</h2><p>Remove your login, business settings, proposals, invoices and project records.</p></div></div>{user?.isAdmin ? <div className="protected-account-note"><ShieldCheck size={18} /><span><strong>Protected administrator account</strong><small>The platform administrator cannot be deleted from the app.</small></span></div> : <><p className="danger-copy">A final backup is downloaded automatically before deletion. This action cannot be undone after confirmation.</p><button className="danger-button" onClick={onDeleteAccount}><UserX size={17} /> Delete my ScopeFlow account</button></>}</section>
     </div>
+  </div>;
+}
+
+function DeleteAccountModal({ user, confirmation, setConfirmation, deleting, onClose, onDelete }: any) {
+  const matches = confirmation.trim().toLowerCase() === String(user.email).toLowerCase();
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="modal-card delete-account-modal" role="dialog" aria-modal="true" aria-labelledby="delete-account-title">
+      <button className="modal-close" aria-label="Close" onClick={onClose} disabled={deleting}><X size={18} /></button>
+      <div className="danger-icon"><AlertTriangle size={25} /></div>
+      <span className="eyebrow danger-eyebrow">Permanent action</span>
+      <h2 id="delete-account-title">Delete your ScopeFlow account?</h2>
+      <p>This permanently removes your workspace, services, proposals, invoices and project history. A final JSON backup downloads before deletion begins.</p>
+      <div className="delete-summary"><span><FileText size={17} /> Proposals and agreements</span><span><ReceiptText size={17} /> Invoices and payment records</span><span><Timer size={17} /> Delivery countdown history</span></div>
+      <Field label="Enter your account email to confirm"><input autoFocus type="email" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} placeholder={user.email} disabled={deleting} /></Field>
+      <div className="modal-actions"><button className="secondary" onClick={onClose} disabled={deleting}>Cancel</button><button className="danger-button" disabled={!matches || deleting} onClick={onDelete}>{deleting ? <><Loader2 className="spin" size={17} /> Deleting account…</> : <><UserX size={17} /> Delete permanently</>}</button></div>
+    </section>
   </div>;
 }
 

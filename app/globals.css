@@ -708,3 +708,47 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .backup-actions { flex-direction: column; }
   .backup-actions > * { width: 100%; }
 }
+
+
+/* ScopeFlow 6.1 — lightweight motion, custom identity and safe account deletion */
+.loading-mark { position: relative; width: 58px; height: 58px; display: grid; place-items: center; margin-bottom: 2px; }
+.loading-ring { position: absolute; inset: 0; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--accent) 13%, transparent); border-top-color: var(--accent); animation: loading-spin .9s linear infinite; }
+.loading-mark-core { width: 42px; height: 42px; border-radius: 13px; background: var(--accent); color: #fff; display: grid; place-items: center; box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 24%, transparent); }
+.loading-dots { display: inline-flex; gap: 5px; height: 10px; align-items: center; margin-top: 3px; }
+.loading-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: loading-dot 1.2s ease-in-out infinite; }
+.loading-dots i:nth-child(2) { animation-delay: .14s; }
+.loading-dots i:nth-child(3) { animation-delay: .28s; }
+@keyframes loading-spin { to { transform: rotate(360deg); } }
+@keyframes loading-dot { 0%, 70%, 100% { opacity: .25; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-3px); } }
+
+.danger-zone { border-color: #f3d0cd; background: linear-gradient(180deg, #fff 0%, #fffafa 100%); }
+.danger-zone .section-title > svg { color: var(--red); }
+.danger-copy { color: var(--muted); line-height: 1.6; margin: -4px 0 16px; }
+.danger-button { min-height: 42px; border: 1px solid #d92d20; border-radius: 10px; padding: 0 15px; background: #d92d20; color: #fff; font-weight: 750; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.danger-button:hover:not(:disabled) { background: #b42318; border-color: #b42318; }
+.danger-button:disabled { opacity: .5; cursor: not-allowed; }
+.protected-account-note { border: 1px solid #d9e0ff; border-radius: 11px; background: #f5f7ff; color: #4452d9; padding: 13px 14px; display: flex; align-items: center; gap: 10px; }
+.protected-account-note span { display: flex; flex-direction: column; gap: 2px; }
+.protected-account-note small { color: var(--muted); }
+.delete-account-modal { max-width: 520px; }
+.danger-icon { width: 48px; height: 48px; border-radius: 14px; background: var(--red-soft); color: var(--red); display: grid; place-items: center; margin-bottom: 14px; }
+.danger-eyebrow { color: var(--red); }
+.delete-account-modal h2 { margin: 5px 0 8px; font-size: 24px; letter-spacing: -.025em; }
+.delete-account-modal > p { color: var(--muted); line-height: 1.6; margin: 0 0 17px; }
+.delete-summary { padding: 13px; border: 1px solid var(--line); background: var(--soft); border-radius: 11px; display: grid; gap: 9px; margin-bottom: 17px; }
+.delete-summary span { display: flex; align-items: center; gap: 9px; font-size: 12px; font-weight: 700; color: #475467; }
+.delete-summary svg { color: var(--red); }
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-ring, .loading-dots i, .spin, .saving svg { animation: none !important; }
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
+
+.modal-close { position: absolute; top: 16px; right: 16px; width: 36px; height: 36px; border: 0; border-radius: 9px; background: var(--soft); color: var(--muted); display: grid; place-items: center; }
+.modal-close:hover:not(:disabled) { color: var(--ink); background: #edf0f5; }
+.delete-account-modal { position: relative; }
+@media (max-width: 640px) {
+  .delete-account-modal { padding: 21px 17px; }
+  .delete-account-modal .modal-actions { flex-direction: column-reverse; }
+  .delete-account-modal .modal-actions > button { width: 100%; }
+}

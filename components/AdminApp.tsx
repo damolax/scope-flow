@@ -1,7 +1,8 @@
 "use client";
 
-import { ArrowLeft, CheckCircle2, Clock3, FileCheck2, Loader2, Search, ShieldCheck, Sparkles, UsersRound, XCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Clock3, FileCheck2, Loader2, Search, ShieldCheck, UsersRound, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import LoadingScreen from "./LoadingScreen";
 
 type Account = {
   id: string; name: string; businessName: string; email: string; active: boolean; isAdmin: boolean;
@@ -49,7 +50,7 @@ export default function AdminApp() {
     finally { setWorkingId(""); }
   }
 
-  if (loading) return <main className="app-loading"><div className="brand-orb"><Sparkles size={22} /></div><strong>Opening administrator console</strong><span>Loading ScopeFlow accounts…</span></main>;
+  if (loading) return <LoadingScreen title="Opening administrator console" text="Loading ScopeFlow accounts…" icon={ShieldCheck} />;
 
   return <main className="admin-page">
     <header className="admin-header"><a href="/app"><ArrowLeft size={17} /> Workspace</a><div><span className="brand-orb"><ShieldCheck size={19} /></span><strong>ScopeFlow administration</strong></div><small>Protected platform access</small></header>

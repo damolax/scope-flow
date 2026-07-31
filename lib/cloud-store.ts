@@ -162,6 +162,39 @@ export async function setAccountActive(accountId: string, active: boolean) {
   return accountFromRow(data);
 }
 
+export async function deleteOwnAccount(accountId: string) {
+  const client = supabaseAdmin();
+  const { data: row, error: accountError } = await client
+    .from(ACCOUNTS)
+    .select("id,auth_user_id,name,business_name,email,active,is_admin,created_at,last_sign_in_at")
+    .eq("id", accountId)
+    .single();
+  if (accountError) throw accountError;
+  const account = accountFromRow(row);
+  if (account.isAdmin || account.email === platformAdminEmail()) {
+    throw new Error("The protected platform administrator account cannot be deleted.");
+  }
+  if (!account.authUserId) throw new Error("This account is not connected to a valid authentication record.");
+
+  // Disable access first so a partially completed deletion never leaves an active account.
+  const { error: disableError } = await client.from(ACCOUNTS).update({ active: false, updated_at: new Date().toISOString() }).eq("id", accountId);
+  if (disableError) throw disableError;
+
+  const { error: authError } = await client.auth.admin.deleteUser(account.authUserId);
+  if (authError) {
+    await client.from(ACCOUNTS).update({ active: true, updated_at: new Date().toISOString() }).eq("id", accountId);
+    throw authError;
+  }
+
+  const { error: proposalsError } = await client.from(PROPOSALS).delete().eq("owner_id", accountId);
+  if (proposalsError) throw proposalsError;
+  const { error: workspaceError } = await client.from(WORKSPACES).delete().eq("owner_id", accountId);
+  if (workspaceError) throw workspaceError;
+  const { error: deleteAccountError } = await client.from(ACCOUNTS).delete().eq("id", accountId);
+  if (deleteAccountError) throw deleteAccountError;
+  return { deleted: true };
+}
+
 export async function listCloudProposals(ownerId: string): Promise<Proposal[]> {
   const { data, error } = await supabaseAdmin().from(PROPOSALS).select("data").eq("owner_id", ownerId).order("updated_at", { ascending: false });
   if (error) throw error;

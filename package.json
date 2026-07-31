@@ -1,6 +1,6 @@
 {
   "name": "scopeflow-proposals",
-  "version": "6.0.0",
+  "version": "6.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -29,5 +29,5 @@
     "node": "22.x"
   },
   "packageManager": "npm@10.9.2",
-  "description": "Proposal, invoice, payment confirmation and delivery countdown workspace for independent professionals."
+  "description": "Proposal, invoice, delivery countdown and secure account workspace for independent professionals."
 }

@@ -1,5 +1,10 @@
 # ScopeFlow 6 — Proposal to Delivery
 
+
+## ScopeFlow 6.1 polish update
+
+This build adds a custom ScopeFlow icon system, lightweight loading animation, safer logo validation and self-service account deletion with an automatic final backup. The protected platform administrator cannot be deleted. No new Supabase schema migration is required for this update.
+
 ScopeFlow is a focused workspace for independent professionals. Each registered user owns a completely separate business workspace. Clients never need accounts: they use secure proposal, invoice and project links.
 
 ## Complete workflow
