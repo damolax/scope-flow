@@ -8,7 +8,7 @@ export type InvoiceStatus = "unpaid" | "payment_reported" | "paid" | "cancelled"
 export type InvoiceKind = "full" | "deposit" | "milestone" | "balance" | "custom";
 export type DeliveryDayMode = "calendar_days" | "business_days";
 export type DeliveryStartTrigger = "full_payment" | "deposit" | "manual";
-export type ProjectStatus = "awaiting_payment" | "scheduled" | "in_progress" | "paused" | "ready_for_review" | "delivered" | "completed";
+export type ProjectStatus = "awaiting_payment" | "scheduled" | "in_progress" | "paused" | "ready_for_review" | "delivered" | "changes_requested" | "accepted" | "completed";
 
 export interface CompanyProfile {
   name: string;
@@ -151,6 +151,14 @@ export interface DeliveryPlan {
   totalPausedMs?: number;
   deliveredAt?: string;
   completedAt?: string;
+  completedItemIds?: string[];
+  submissionNote?: string;
+  submittedAt?: string;
+  clientReviewNote?: string;
+  changesRequestedAt?: string;
+  acceptedAt?: string;
+  acceptedBy?: string;
+  acceptedEmail?: string;
   lastClientNotificationAt?: string;
   lastClientNotificationType?: string;
 }
