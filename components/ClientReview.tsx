@@ -28,6 +28,7 @@ export default function ClientReview({ token }: { token: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [deliveryReviewNote, setDeliveryReviewNote] = useState("");
   const [preview, setPreview] = useState(false);
   const [, setTick] = useState(0);
 
@@ -133,12 +134,54 @@ export default function ClientReview({ token }: { token: string }) {
     }
   }
 
+  async function reviewDeliveredProject(action: "accept_project" | "request_project_changes") {
+    if (!proposal || proposal.delivery?.status !== "delivered" || preview) return;
+    if (action === "request_project_changes" && !deliveryReviewNote.trim()) {
+      setError("Describe the changes you need before sending the project back.");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      const updated = await proposalsRepository.publicAction(token, {
+        action,
+        signedBy: name.trim() || proposal.client.name,
+        email: email.trim() || proposal.client.email,
+        note: deliveryReviewNote.trim(),
+      }, cloud);
+      setProposal(updated);
+      setItems(structuredClone(updated.items));
+      setDeliveryReviewNote("");
+      setSuccess(action === "accept_project"
+        ? "Project accepted. Your acceptance has been recorded."
+        : "Your requested changes were sent to the business owner.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err: any) {
+      setError(err.message || "Could not submit your project review.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   if (loading) return <LoadingScreen className="client-loading" title="Opening proposal" text="Preparing your secure review page…" icon={FileText} />;
   if (!proposal || !working || !totals) return <main className="client-error"><X size={26} /><h1>Proposal unavailable</h1><p>{error || "The link may be incorrect or no longer active."}</p></main>;
 
   const expired = isExpired(proposal) && proposal.status === "awaiting_client";
   const locked = proposal.status === "approved";
   const waiting = proposal.status === "needs_response";
+  const projectStatusText: Record<string, string> = {
+    awaiting_payment: "Awaiting payment",
+    scheduled: "Ready to start",
+    in_progress: "In progress",
+    paused: "Paused",
+    ready_for_review: "In progress",
+    changes_requested: "Changes requested",
+    delivered: "Delivered",
+    accepted: "Accepted",
+    completed: "Accepted",
+  };
+  const orderedProjectItems = proposal.approvedSnapshot?.items || items.filter((item) => !item.optional || item.selected);
+  const completedProjectItems = new Set(proposal.delivery?.completedItemIds || []);
   const selected = items.filter((item) => !item.optional || item.selected);
   const included = items.filter((item) => !item.optional);
   const optional = items.filter((item) => item.optional);
@@ -157,7 +200,7 @@ export default function ClientReview({ token }: { token: string }) {
       {proposal.ownerResponseNote && proposal.status === "awaiting_client" && <div className="owner-message"><MessageSquareText size={19} /><div><strong>Message from {proposal.company.name}</strong><p>{proposal.ownerResponseNote}</p></div></div>}
       {expired && <div className="client-notice warning"><Clock3 size={20} /><div><strong>This {documentLabel} expired on {dateLabel(proposal.validUntil)}</strong><span>You can still review it, but approval is unavailable. Contact {proposal.company.name} for an updated offer.</span></div></div>}
       {waiting && <div className="client-notice"><RefreshCcw size={20} /><div><strong>Your request is being reviewed</strong><span>The business owner will return an updated version to this same secure link.</span></div></div>}
-      {locked && <><div className="client-notice success"><FileCheck2 size={20} /><div><strong>Approved agreement</strong><span>Approved by {proposal.approval?.signedBy} on {dateLabel(proposal.approval?.signedAt)} · Reference {proposal.approval?.reference}</span></div><div className="client-doc-actions"><a href={`/api/pdf/${token}?type=agreement`}><Download size={17} /> Agreement PDF</a>{activeInvoices(proposal).map((invoice) => <a key={invoice.id} href={`/invoice/${invoice.publicToken}`}><FileText size={17} /> {invoice.number}</a>)}</div></div>{proposal.delivery?.enabled && <div className="client-project-card"><div className="client-project-head"><span><Timer size={20} /><div><strong>Project delivery</strong><small>Return to this secure link any time to check the remaining delivery time.</small></div></span><em className={`project-status-badge ${deliveryUrgency(proposal.delivery)}`}>{urgencyLabel(deliveryUrgency(proposal.delivery))}</em></div><div className="client-project-grid"><div><small>Status</small><strong>{proposal.delivery.status.replace(/_/g, " ")}</strong></div><div><small>Delivery window</small><strong>{proposal.delivery.duration} {proposal.delivery.dayMode === "business_days" ? "business" : "calendar"} days</strong></div><div><small>Time remaining</small><strong>{remainingTimeLabel(proposal.delivery)}</strong></div><div><small>Expected delivery</small><strong>{proposal.delivery.deadlineAt ? dateTimeLabel(proposal.delivery.deadlineAt, proposal.delivery.timezone) : "Starts after payment confirmation"}</strong></div></div>{proposal.delivery.pauseReason && <div className="client-project-note">Paused: {proposal.delivery.pauseReason}</div>}{proposal.delivery.deadlineAt && <div className="client-project-actions"><a href={`/api/calendar/${proposal.publicToken}`}><CalendarDays size={17} /> Download calendar file</a></div>}</div>}</>}
+      {locked && <><div className="client-notice success"><FileCheck2 size={20} /><div><strong>Approved agreement</strong><span>Approved by {proposal.approval?.signedBy} on {dateLabel(proposal.approval?.signedAt)} · Reference {proposal.approval?.reference}</span></div><div className="client-doc-actions"><a href={`/api/pdf/${token}?type=agreement`}><Download size={17} /> Agreement PDF</a>{activeInvoices(proposal).map((invoice) => <a key={invoice.id} href={`/invoice/${invoice.publicToken}`}><FileText size={17} /> {invoice.number}</a>)}</div></div>{proposal.delivery?.enabled && <div className="client-project-card"><div className="client-project-head"><span><Timer size={20} /><div><strong>Project progress</strong><small>Return to this secure link any time to follow delivery and review the submitted work.</small></div></span><em className={`project-status-badge ${deliveryUrgency(proposal.delivery)}`}>{projectStatusText[proposal.delivery.status] || proposal.delivery.status.replace(/_/g, " ")}</em></div><div className="client-project-grid"><div><small>Status</small><strong>{projectStatusText[proposal.delivery.status] || proposal.delivery.status.replace(/_/g, " ")}</strong></div><div><small>Delivery window</small><strong>{proposal.delivery.duration} {proposal.delivery.dayMode === "business_days" ? "business" : "calendar"} days</strong></div><div><small>Time remaining</small><strong>{remainingTimeLabel(proposal.delivery)}</strong></div><div><small>Expected delivery</small><strong>{proposal.delivery.deadlineAt ? dateTimeLabel(proposal.delivery.deadlineAt, proposal.delivery.timezone) : "Starts after payment confirmation"}</strong></div></div>{proposal.delivery.pauseReason && <div className="client-project-note">Paused: {proposal.delivery.pauseReason}</div>}{proposal.delivery.status === "changes_requested" && <div className="client-project-note"><strong>Changes requested</strong><span>{proposal.delivery.clientReviewNote || "Your requested changes were sent. The business owner will submit an updated delivery here."}</span></div>}{["delivered", "accepted", "completed"].includes(proposal.delivery.status) && <div className="client-delivery-review"><div className="client-delivery-heading"><div><strong>Submitted work</strong><span>{completedProjectItems.size} of {orderedProjectItems.length} ordered services marked complete</span></div>{proposal.delivery.submittedAt && <small>Submitted {dateTimeLabel(proposal.delivery.submittedAt, proposal.delivery.timezone)}</small>}</div><div className="client-delivered-services">{orderedProjectItems.map((item) => <div key={item.id} className={completedProjectItems.has(item.id) ? "done" : ""}><CheckCircle2 size={18} /><span><strong>{item.title}</strong><small>{item.description}</small></span></div>)}</div>{proposal.delivery.submissionNote && <div className="client-submission-note"><strong>Delivery note</strong><p>{proposal.delivery.submissionNote}</p></div>}{proposal.delivery.status === "delivered" && !preview && <div className="client-acceptance-box"><div><strong>Review this delivery</strong><p>Accept the project if the agreed scope has been delivered, or describe the changes you still need.</p></div><textarea rows={3} value={deliveryReviewNote} onChange={(event) => setDeliveryReviewNote(event.target.value)} placeholder="Optional when accepting. Required when requesting changes." /><div className="client-acceptance-actions"><button className="client-secondary-action" disabled={submitting || !deliveryReviewNote.trim()} onClick={() => reviewDeliveredProject("request_project_changes")}><RefreshCcw size={17} /> Request Changes</button><button className="client-submit" disabled={submitting} onClick={() => reviewDeliveredProject("accept_project")}>{submitting ? <Loader2 className="spin" size={17} /> : <CheckCircle2 size={17} />} Accept Project</button></div></div>}{["accepted", "completed"].includes(proposal.delivery.status) && <div className="client-accepted-state"><CheckCircle2 size={21} /><div><strong>Project accepted</strong><span>{proposal.delivery.acceptedBy ? `Accepted by ${proposal.delivery.acceptedBy}` : "Your acceptance has been recorded"}{proposal.delivery.acceptedAt ? ` on ${dateTimeLabel(proposal.delivery.acceptedAt, proposal.delivery.timezone)}` : ""}.</span>{proposal.delivery.clientReviewNote && <p>{proposal.delivery.clientReviewNote}</p>}</div></div>}</div>}{proposal.delivery.deadlineAt && !["accepted", "completed"].includes(proposal.delivery.status) && <div className="client-project-actions"><a href={`/api/calendar/${proposal.publicToken}`}><CalendarDays size={17} /> Download calendar file</a></div>}</div>}</>}
 
       <section className="client-hero">
         <span className="client-eyebrow">{proposal.proposalNumber} · Prepared for {proposal.client.company || proposal.client.name}</span>
