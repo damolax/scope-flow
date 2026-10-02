@@ -195,6 +195,7 @@ export function defaultDeliveryPlan(company?: { defaultTimezone?: string; defaul
 export function normalizeProposal(proposal: Proposal): Proposal {
   const invoices = normalizedInvoices(proposal);
   const delivery = proposal.delivery ? { ...defaultDeliveryPlan(proposal.company), ...proposal.delivery } : defaultDeliveryPlan(proposal.company);
+  delivery.completedItemIds = Array.isArray(delivery.completedItemIds) ? delivery.completedItemIds : [];
   return {
     ...proposal,
     archived: Boolean(proposal.archived),
@@ -294,7 +295,7 @@ export type DeliveryUrgency = "not_started" | "on_track" | "due_soon" | "almost_
 export function deliveryUrgency(plan?: DeliveryPlan, now = Date.now(), dueSoonHours = 72, almostDueHours = 12): DeliveryUrgency {
   if (!plan?.enabled || !plan.deadlineAt) return "not_started";
   if (plan.status === "paused") return "paused";
-  if (["delivered", "completed"].includes(plan.status)) return "delivered";
+  if (["delivered", "accepted", "completed"].includes(plan.status)) return "delivered";
   const remaining = new Date(plan.deadlineAt).getTime() - now;
   if (remaining < 0) return "overdue";
   if (remaining <= Math.max(1, almostDueHours) * 3_600_000) return "almost_due";
@@ -321,7 +322,7 @@ export function remainingTimeLabel(plan?: DeliveryPlan, now = Date.now()) {
     return `${durationLabel(value)} remaining when resumed`;
   }
   if (!plan.deadlineAt) return plan.status === "scheduled" ? "Waiting for project start" : "Countdown has not started";
-  if (["delivered", "completed"].includes(plan.status)) return plan.deliveredAt ? `Delivered ${dateTimeLabel(plan.deliveredAt, plan.timezone)}` : "Delivered";
+  if (["delivered", "accepted", "completed"].includes(plan.status)) return plan.deliveredAt ? `Delivered ${dateTimeLabel(plan.deliveredAt, plan.timezone)}` : "Delivered";
   const difference = new Date(plan.deadlineAt).getTime() - now;
   if (difference < 0) return `${durationLabel(Math.abs(difference))} overdue`;
   return `${durationLabel(difference)} remaining`;
@@ -360,14 +361,21 @@ export function secondaryStatusLabel(proposalInput: Proposal) {
   const proposal = normalizeProposal(proposalInput);
   if (isExpired(proposal) && proposal.status === "awaiting_client") return "Expired";
   if (proposal.status === "approved") {
+    const projectStatus = proposal.delivery?.status;
+    if (projectStatus === "accepted") return "Project accepted";
+    if (projectStatus === "delivered") return "Project delivered — awaiting client acceptance";
+    if (projectStatus === "changes_requested") return "Client requested project changes";
+    if (projectStatus === "in_progress") return "Project in progress";
+    if (projectStatus === "paused") return "Project paused";
+    if (projectStatus === "scheduled") return "Payment confirmed — ready to start";
     const invoices = activeInvoices(proposal);
-    if (!invoices.length) return "Agreement locked — invoice not created";
+    if (!invoices.length) return "Negotiation complete — invoice not sent";
     const reported = invoices.find((invoice) => invoice.status === "payment_reported");
     if (reported) return `Payment reported for ${reported.number}`;
-    if (invoices.every((invoice) => invoice.status === "paid")) return "All invoices marked paid";
+    if (invoices.every((invoice) => invoice.status === "paid")) return "Payment confirmed";
     const views = invoices.reduce((sum, invoice) => sum + Number(invoice.viewCount || 0), 0);
-    if (views > 0) return `${invoices.length} invoice${invoices.length === 1 ? "" : "s"} · viewed ${views} time${views === 1 ? "" : "s"}`;
-    return `${invoices.length} invoice${invoices.length === 1 ? "" : "s"} ready`;
+    if (views > 0) return `Invoice sent · viewed ${views} time${views === 1 ? "" : "s"}`;
+    return `Invoice sent · ${invoices.length} invoice${invoices.length === 1 ? "" : "s"}`;
   }
   return {
     none: "Not sent",
