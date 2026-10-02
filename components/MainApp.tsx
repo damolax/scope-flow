@@ -869,12 +869,47 @@ function ApprovedActions({ proposal, onCreateInvoice, onMarkPaid, onCopyInvoice,
   const plan = proposal.delivery!;
   const urgency = deliveryUrgency(plan);
   const calendarUrl = plan.deadlineAt ? googleCalendarUrl(proposal) : "";
+  const orderedItems: ProposalItem[] = proposal.approvedSnapshot?.items || proposal.items.filter((item: ProposalItem) => !item.optional || item.selected);
+  const completedItems = new Set(plan.completedItemIds || []);
+  const allItemsDone = orderedItems.length > 0 && orderedItems.every((item) => completedItems.has(item.id));
+  const [submissionNote, setSubmissionNote] = useState(plan.submissionNote || "");
+
+  useEffect(() => {
+    setSubmissionNote(plan.submissionNote || "");
+  }, [proposal.id, plan.submissionNote]);
 
   const pauseProject = () => { const reason = window.prompt("Why is the countdown being paused?", "Waiting for client materials"); if (reason) onProjectAction("pause", reason); };
   const extendProject = () => { const days = Number(window.prompt("How many days should be added?", "1")); if (Number.isFinite(days) && days > 0) onProjectAction("extend", days); };
 
+  const statusText: Record<string, string> = {
+    awaiting_payment: "Awaiting payment",
+    scheduled: "Ready to start",
+    in_progress: "In progress",
+    paused: "Paused",
+    ready_for_review: "In progress",
+    changes_requested: "Changes requested",
+    delivered: "Delivered",
+    accepted: "Accepted",
+    completed: "Accepted",
+  };
+
+  const invoiceSent = visibleInvoices.length > 0;
+  const paymentConfirmed = Boolean(plan.paymentConfirmedAt || visibleInvoices.some((invoice: InvoiceInfo) => invoice.status === "paid"));
+  let currentStage = 0;
+  if (invoiceSent) currentStage = 1;
+  if (paymentConfirmed) currentStage = 2;
+  if (["in_progress", "paused", "ready_for_review", "changes_requested"].includes(plan.status)) currentStage = 3;
+  if (plan.status === "delivered") currentStage = 4;
+  if (["accepted", "completed"].includes(plan.status)) currentStage = 5;
+  const progressStages = ["Negotiation", "Invoice sent", "Payment confirmed", "In progress", "Delivered", "Accepted"];
+
   return <div className="approved-workspace">
     <div className="notice success approved-action-panel"><FileCheck2 size={21} /><div><strong>Approved and locked</strong><span>Version {proposal.approvedSnapshot?.version || proposal.version} was approved by {proposal.approval?.signedBy} on {dateTimeLabel(proposal.approval?.signedAt)}. The accepted scope cannot be silently changed.</span></div><div className="notice-actions"><a className="secondary compact" href={`/api/pdf/${proposal.publicToken}?type=agreement`}><Download size={17} /> Agreement PDF</a><button className="secondary compact" onClick={onCreateChangeOrder}><Plus size={17} /> Additional work order</button></div></div>
+
+    <section className="panel project-progress-panel">
+      <div className="panel-heading"><div><span className="eyebrow">Project progress</span><h2>From negotiation to acceptance</h2><p>The project now has a visible commercial and delivery path instead of a single approved state.</p></div></div>
+      <div className="project-progress-track">{progressStages.map((label, index) => <div key={label} className={index < currentStage ? "done" : index === currentStage ? "active" : ""}><span>{index < currentStage ? <Check size={14} /> : index + 1}</span><small>{label}</small></div>)}</div>
+    </section>
 
     <section className="panel document-center"><div className="panel-heading"><div><span className="eyebrow">Documents</span><h2>Invoices</h2><p>Each invoice has its own secure link, status and PDF.</p></div>{remaining > 0.005 && <button className="primary compact" onClick={() => onCreateInvoice()}><FilePlus2 size={17} /> Create invoice</button>}</div>
       {visibleInvoices.length ? <div className="invoice-list">{visibleInvoices.map((invoice: InvoiceInfo) => <div key={invoice.id} className="invoice-list-row"><div className={`invoice-list-icon ${invoice.status}`}><ReceiptText size={18} /></div><div className="invoice-list-main"><strong>{invoice.number}</strong><small>{invoice.kind.replace(/_/g, " ")} · Due {dateLabel(invoice.dueAt)} · {invoice.viewCount || 0} views</small></div><div className="invoice-list-amount"><strong>{money(invoice.amountDue, proposal.currency)}</strong><span className={`invoice-state ${invoice.status}`}>{invoice.status === "payment_reported" ? "Payment reported" : invoice.status}</span></div><div className="invoice-list-actions"><a title="Open invoice" href={`/invoice/${invoice.publicToken}`} target="_blank"><Eye size={16} /></a><a title="Download PDF" href={`/api/pdf/${invoice.publicToken}?type=invoice`}><Download size={16} /></a><button title="Copy link" onClick={() => onCopyInvoice(invoice)}><Copy size={16} /></button><button title="Email invoice" onClick={() => onEmailInvoice(invoice)}><Mail size={16} /></button><button title="Send reminder" onClick={() => onReminder(invoice)}><Bell size={16} /></button><button title="Edit invoice" onClick={() => onEditInvoice(invoice)}><Pencil size={16} /></button><button title={invoice.status === "paid" ? "Mark unpaid" : "Confirm payment"} onClick={() => onMarkPaid(invoice)}>{invoice.status === "paid" ? <RotateCcw size={16} /> : <CheckCircle2 size={16} />}</button><button title="Archive invoice" onClick={() => { const disable = confirm("Disable the client invoice link too? Click OK to disable it, or Cancel to archive internally only."); onArchiveInvoice(invoice, disable); }}><Archive size={16} /></button></div></div>)}</div> : <Empty icon={ReceiptText} title="No invoice documents yet" text="Create a deposit, milestone, balance or full invoice from the approved agreement." action="Create invoice" onAction={() => onCreateInvoice()} />}
@@ -882,24 +917,39 @@ function ApprovedActions({ proposal, onCreateInvoice, onMarkPaid, onCopyInvoice,
       {archivedInvoices.length > 0 && <details className="archived-invoices"><summary>Archived invoices ({archivedInvoices.length})</summary>{archivedInvoices.map((invoice: InvoiceInfo) => <div key={invoice.id}><span><strong>{invoice.number}</strong><small>{money(invoice.amountDue, proposal.currency)} · {invoice.linkEnabled === false ? "Link disabled" : "Link active"}</small></span><button className="secondary compact" onClick={() => onRestoreInvoice(invoice)}><RotateCcw size={15} /> Restore</button></div>)}</details>}
     </section>
 
-    <section className="panel project-delivery-card"><div className="panel-heading"><div><span className="eyebrow">Project delivery</span><h2>Countdown and status</h2><p>The timer starts only after the selected payment condition is confirmed.</p></div><span className={`project-status-badge ${urgency}`}>{urgencyLabel(urgency)}</span></div>
-      <div className="delivery-overview"><div><small>Status</small><strong>{plan.status.replace(/_/g, " ")}</strong></div><div><small>Delivery window</small><strong>{plan.duration} {plan.dayMode === "business_days" ? "business" : "calendar"} days</strong></div><div><small>Time remaining</small><strong>{remainingTimeLabel(plan)}</strong></div><div><small>Expected delivery</small><strong>{plan.deadlineAt ? dateTimeLabel(plan.deadlineAt, plan.timezone) : "Starts after payment"}</strong></div></div>
+    <section className="panel project-delivery-card">
+      <div className="panel-heading"><div><span className="eyebrow">Project delivery</span><h2>Complete and submit the ordered work</h2><p>Mark each ordered service as done, add a delivery note, then submit the project for client review.</p></div><span className={`project-status-badge ${urgency}`}>{statusText[plan.status] || plan.status.replace(/_/g, " ")}</span></div>
+      <div className="delivery-overview"><div><small>Status</small><strong>{statusText[plan.status] || plan.status.replace(/_/g, " ")}</strong></div><div><small>Delivery window</small><strong>{plan.duration} {plan.dayMode === "business_days" ? "business" : "calendar"} days</strong></div><div><small>Time remaining</small><strong>{remainingTimeLabel(plan)}</strong></div><div><small>Expected delivery</small><strong>{plan.deadlineAt ? dateTimeLabel(plan.deadlineAt, plan.timezone) : "Starts after payment"}</strong></div></div>
       {plan.pauseReason && <div className="inline-warning"><Pause size={17} /> Paused: {plan.pauseReason}</div>}
+      {plan.status === "changes_requested" && <div className="inline-warning"><RefreshCcw size={17} /><div><strong>Client requested changes</strong><span>{plan.clientReviewNote || "Review the client note, update the affected work and submit the project again."}</span></div></div>}
+      {plan.status === "delivered" && <div className="notice success project-review-state"><CheckCircle2 size={19} /><div><strong>Project delivered to client</strong><span>Submitted {dateTimeLabel(plan.submittedAt || plan.deliveredAt, plan.timezone)}. The client can now accept it or request changes from the same secure link.</span></div></div>}
+      {["accepted", "completed"].includes(plan.status) && <div className="notice success project-review-state"><CheckCircle2 size={19} /><div><strong>Project accepted</strong><span>{plan.acceptedBy ? `${plan.acceptedBy} accepted the project` : "The client accepted the project"}{plan.acceptedAt ? ` on ${dateTimeLabel(plan.acceptedAt, plan.timezone)}` : ""}.</span>{plan.clientReviewNote && <small>{plan.clientReviewNote}</small>}</div></div>}
+
+      {["in_progress", "paused", "ready_for_review", "changes_requested", "delivered", "accepted", "completed"].includes(plan.status) && <div className="project-completion">
+        <div className="project-completion-heading"><div><strong>Ordered services</strong><small>{completedItems.size} of {orderedItems.length} marked done</small></div><span>{orderedItems.length ? Math.round((completedItems.size / orderedItems.length) * 100) : 0}%</span></div>
+        <div className="project-service-checklist">{orderedItems.map((item) => {
+          const checked = completedItems.has(item.id);
+          const locked = ["delivered", "accepted", "completed"].includes(plan.status);
+          return <label key={item.id} className={checked ? "done" : ""}><input type="checkbox" checked={checked} disabled={locked} onChange={() => onProjectAction("toggle_item", item.id)} /><span>{checked ? <CheckCircle2 size={18} /> : <Clock3 size={18} />}<span><strong>{item.title}</strong><small>{item.description}</small></span></span></label>;
+        })}</div>
+      </div>}
+
+      {["in_progress", "ready_for_review", "changes_requested"].includes(plan.status) && <div className="project-submit-box">
+        <Field label="Delivery note" hint="Tell the client what was completed, where to review it, and anything they should know before accepting."><textarea rows={4} value={submissionNote} onChange={(event) => setSubmissionNote(event.target.value)} placeholder="Example: All agreed pages are complete. Please review the live site and confirm that the approved scope has been delivered." /></Field>
+        <div className="project-submit-footer"><span>{allItemsDone ? <><CheckCircle2 size={16} /> All ordered services are complete</> : <><Clock3 size={16} /> Finish the checklist before submission</>}</span><button className="success-button" disabled={!allItemsDone || !submissionNote.trim()} onClick={() => onProjectAction("submit", submissionNote)}><Send size={17} /> Submit Project</button></div>
+      </div>}
+
       <div className="project-actions">
         {plan.status === "scheduled" && <button className="primary compact" onClick={() => onProjectAction("start")}><Play size={16} /> Start project</button>}
         {plan.status === "awaiting_payment" && plan.startTrigger === "manual" && <button className="primary compact" onClick={() => onProjectAction("start")}><Play size={16} /> Start manually</button>}
         {["in_progress", "ready_for_review"].includes(plan.status) && <button className="secondary compact" onClick={pauseProject}><Pause size={16} /> Pause</button>}
         {plan.status === "paused" && <button className="primary compact" onClick={() => onProjectAction("resume")}><Play size={16} /> Resume</button>}
-        {["in_progress", "paused", "ready_for_review", "scheduled"].includes(plan.status) && <button className="secondary compact" onClick={extendProject}><Clock3 size={16} /> Extend</button>}
-        {plan.status === "in_progress" && <button className="secondary compact" onClick={() => onProjectAction("review")}><Eye size={16} /> Ready for review</button>}
-        {["in_progress", "ready_for_review"].includes(plan.status) && <button className="success-button compact" onClick={() => onProjectAction("deliver")}><CheckCircle2 size={16} /> Mark delivered</button>}
-        {plan.status === "delivered" && <button className="primary compact" onClick={() => onProjectAction("complete")}><Check size={16} /> Complete project</button>}
-        {plan.deadlineAt && <><a className="secondary compact" href={`/api/calendar/${proposal.publicToken}`}><CalendarDays size={16} /> Calendar file</a><a className="secondary compact" href={calendarUrl} target="_blank" rel="noreferrer"><CalendarDays size={16} /> Google Calendar</a></>}
+        {["in_progress", "paused", "ready_for_review", "changes_requested", "scheduled"].includes(plan.status) && <button className="secondary compact" onClick={extendProject}><Clock3 size={16} /> Extend</button>}
+        {plan.deadlineAt && !["accepted", "completed"].includes(plan.status) && <><a className="secondary compact" href={`/api/calendar/${proposal.publicToken}`}><CalendarDays size={16} /> Calendar file</a><a className="secondary compact" href={calendarUrl} target="_blank" rel="noreferrer"><CalendarDays size={16} /> Google Calendar</a></>}
       </div>
     </section>
   </div>;
 }
-
 function EditorItem({ item, index, count, currency, locked, update, moveUp, moveDown, remove }: any) {
   const [advanced, setAdvanced] = useState(false);
   return <div className="editor-item"><div className="item-number"><span>{String(index + 1).padStart(2, "0")}</span><button disabled={locked || index === 0} onClick={moveUp} aria-label="Move service up"><ArrowUp size={13} /></button><button disabled={locked || index === count - 1} onClick={moveDown} aria-label="Move service down"><ArrowDown size={13} /></button></div><div className="item-fields"><div className="item-title-row"><input disabled={locked} className="item-title-input" value={item.title} onChange={(e) => update({ title: e.target.value })} /><button disabled={locked} className="icon-button danger-text" onClick={remove} aria-label={`Remove ${item.title}`}><Trash2 size={16} /></button></div><textarea disabled={locked} rows={2} value={item.description} onChange={(e) => update({ description: e.target.value })} placeholder="Explain the result the client receives, not only the technical task." /><div className="item-pricing"><Field label="Price"><MoneyInput currency={currency} value={item.unitPrice} disabled={locked} onChange={(value) => update({ unitPrice: value })} /></Field><Field label="Quantity"><input disabled={locked} type="number" min="1" value={item.quantity} onChange={(e) => update({ quantity: Math.max(1, Number(e.target.value)) })} /></Field><Field label="Unit"><select disabled={locked} value={item.pricingUnit} onChange={(e) => update({ pricingUnit: e.target.value, clientCanChangeQuantity: e.target.value !== "fixed" })}>{pricingUnits.map((unit) => <option key={unit.value} value={unit.value}>{unit.label}</option>)}</select></Field></div><div className="item-options"><label><input disabled={locked} type="checkbox" checked={item.optional} onChange={(e) => update({ optional: e.target.checked })} /> Optional extra</label><label><input disabled={locked} type="checkbox" checked={item.recommended} onChange={(e) => update({ recommended: e.target.checked })} /> Recommended</label><button className="text-button" onClick={() => setAdvanced(!advanced)}>Client controls <ChevronDown className={advanced ? "rotated" : ""} size={14} /></button></div>{advanced && <div className="advanced-item"><label className="toggle-row subtle"><input disabled={locked} type="checkbox" checked={item.clientCanRequestPrice !== false} onChange={(e) => update({ clientCanRequestPrice: e.target.checked })} /><span><strong>Allow price requests</strong><small>The client sees “Request a different price.”</small></span></label><label className="toggle-row subtle"><input disabled={locked || item.pricingUnit === "fixed"} type="checkbox" checked={item.clientCanChangeQuantity !== false && item.pricingUnit !== "fixed"} onChange={(e) => update({ clientCanChangeQuantity: e.target.checked })} /><span><strong>Allow quantity changes</strong><small>Available for per-item, hourly, daily and monthly services.</small></span></label><Field label="Hidden price flexibility"><select disabled={locked} value={item.flexibility} onChange={(e) => update({ flexibility: e.target.value })}>{flexibilityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field><Field label="Hidden minimum price" hint="Clients never see this."><MoneyInput currency={currency} value={item.minimumUnitPrice || 0} disabled={locked} onChange={(value) => update({ minimumUnitPrice: value || undefined })} /></Field></div>}</div></div>;
