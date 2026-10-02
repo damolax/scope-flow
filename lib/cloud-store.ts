@@ -3,6 +3,22 @@ import { defaultWorkspace } from "./demo";
 import { BackupRestoreResult, Proposal, ScopeFlowBackup, ServiceCatalogItem, WorkspaceSettings } from "./types";
 import { normalizeProposal, validateBackup } from "./helpers";
 import { platformAdminEmail, supabaseAdmin } from "./supabase";
+import { neonDatabaseEnabled } from "./neon";
+import {
+  neonDeleteCloudProposal,
+  neonDeleteOwnAccount,
+  neonEnsureAccountForAuthUser,
+  neonGetCloudProposal,
+  neonGetCloudProposalByInvoiceToken,
+  neonGetCloudProposalByToken,
+  neonGetWorkspaceSettings,
+  neonListCloudProposals,
+  neonListPlatformAccounts,
+  neonRestoreCloudBackup,
+  neonSaveCloudProposal,
+  neonSaveWorkspaceSettings,
+  neonSetAccountActive,
+} from "./neon-store";
 
 const ACCOUNTS = "sf_accounts";
 const WORKSPACES = "sf_workspaces";
@@ -59,6 +75,7 @@ async function ensureWorkspace(ownerId: string, businessName: string, email: str
 }
 
 export async function ensureAccountForAuthUser(user: User): Promise<StoredAccount> {
+  if (neonDatabaseEnabled()) return neonEnsureAccountForAuthUser(user);
   const email = String(user.email || "").toLowerCase().trim();
   if (!email) throw new Error("The authenticated account does not have an email address.");
   const metadata = user.user_metadata || {};
@@ -128,6 +145,7 @@ export async function ensureAccountForAuthUser(user: User): Promise<StoredAccoun
 }
 
 export async function listPlatformAccounts(): Promise<AdminAccountSummary[]> {
+  if (neonDatabaseEnabled()) return neonListPlatformAccounts();
   const client = supabaseAdmin();
   const [{ data: accounts, error: accountsError }, { data: proposals, error: proposalsError }] = await Promise.all([
     client.from(ACCOUNTS).select("id,auth_user_id,name,business_name,email,active,is_admin,created_at,last_sign_in_at").order("created_at", { ascending: false }),
@@ -152,6 +170,7 @@ export async function listPlatformAccounts(): Promise<AdminAccountSummary[]> {
 }
 
 export async function setAccountActive(accountId: string, active: boolean) {
+  if (neonDatabaseEnabled()) return neonSetAccountActive(accountId, active);
   const { data, error } = await supabaseAdmin()
     .from(ACCOUNTS)
     .update({ active, updated_at: new Date().toISOString() })
@@ -163,6 +182,7 @@ export async function setAccountActive(accountId: string, active: boolean) {
 }
 
 export async function deleteOwnAccount(accountId: string) {
+  if (neonDatabaseEnabled()) return neonDeleteOwnAccount(accountId);
   const client = supabaseAdmin();
   const { data: row, error: accountError } = await client
     .from(ACCOUNTS)
@@ -196,24 +216,28 @@ export async function deleteOwnAccount(accountId: string) {
 }
 
 export async function listCloudProposals(ownerId: string): Promise<Proposal[]> {
+  if (neonDatabaseEnabled()) return neonListCloudProposals(ownerId);
   const { data, error } = await supabaseAdmin().from(PROPOSALS).select("data").eq("owner_id", ownerId).order("updated_at", { ascending: false });
   if (error) throw error;
   return (data || []).map((row: any) => normalizeProposal(row.data as Proposal));
 }
 
 export async function getCloudProposal(ownerId: string, id: string): Promise<Proposal | null> {
+  if (neonDatabaseEnabled()) return neonGetCloudProposal(ownerId, id);
   const { data, error } = await supabaseAdmin().from(PROPOSALS).select("data").eq("owner_id", ownerId).eq("id", id).maybeSingle();
   if (error) throw error;
   return data?.data ? normalizeProposal(data.data as Proposal) : null;
 }
 
 export async function getCloudProposalByToken(token: string): Promise<Proposal | null> {
+  if (neonDatabaseEnabled()) return neonGetCloudProposalByToken(token);
   const { data, error } = await supabaseAdmin().from(PROPOSALS).select("data").eq("public_token", token).maybeSingle();
   if (error) throw error;
   return data?.data ? normalizeProposal(data.data as Proposal) : null;
 }
 
 export async function saveCloudProposal(ownerId: string, proposal: Proposal): Promise<Proposal> {
+  if (neonDatabaseEnabled()) return neonSaveCloudProposal(ownerId, proposal);
   const next = normalizeProposal({ ...proposal, updatedAt: new Date().toISOString() });
   const invoiceTokens = (next.invoices || []).map((invoice) => invoice.publicToken).filter(Boolean);
   const { error } = await supabaseAdmin().from(PROPOSALS).upsert({ id: next.id, owner_id: ownerId, public_token: next.publicToken, invoice_tokens: invoiceTokens, status: next.status, client_email: next.client.email, updated_at: next.updatedAt, data: next });
@@ -222,6 +246,7 @@ export async function saveCloudProposal(ownerId: string, proposal: Proposal): Pr
 }
 
 export async function getCloudProposalByInvoiceToken(token: string): Promise<Proposal | null> {
+  if (neonDatabaseEnabled()) return neonGetCloudProposalByInvoiceToken(token);
   const client = supabaseAdmin();
   const indexed = await client.from(PROPOSALS).select("data").contains("invoice_tokens", [token]).maybeSingle();
   if (indexed.error) throw indexed.error;
@@ -239,11 +264,13 @@ export async function getCloudProposalByInvoiceToken(token: string): Promise<Pro
 }
 
 export async function deleteCloudProposal(ownerId: string, id: string) {
+  if (neonDatabaseEnabled()) return neonDeleteCloudProposal(ownerId, id);
   const { error } = await supabaseAdmin().from(PROPOSALS).delete().eq("owner_id", ownerId).eq("id", id);
   if (error) throw error;
 }
 
 export async function getWorkspaceSettings(ownerId: string): Promise<WorkspaceSettings> {
+  if (neonDatabaseEnabled()) return neonGetWorkspaceSettings(ownerId);
   const { data, error } = await supabaseAdmin().from(WORKSPACES).select("data").eq("owner_id", ownerId).maybeSingle();
   if (error) throw error;
   if (!data?.data) {
@@ -259,6 +286,7 @@ export async function getWorkspaceSettings(ownerId: string): Promise<WorkspaceSe
 }
 
 export async function saveWorkspaceSettings(ownerId: string, settings: WorkspaceSettings) {
+  if (neonDatabaseEnabled()) return neonSaveWorkspaceSettings(ownerId, settings);
   const { error } = await supabaseAdmin().from(WORKSPACES).upsert({ owner_id: ownerId, data: settings, updated_at: new Date().toISOString() });
   if (error) throw error;
   await supabaseAdmin().from(ACCOUNTS).update({ business_name: settings.company.name, updated_at: new Date().toISOString() }).eq("id", ownerId);
@@ -267,6 +295,7 @@ export async function saveWorkspaceSettings(ownerId: string, settings: Workspace
 
 
 export async function restoreCloudBackup(ownerId: string, raw: unknown, mode: "merge" | "replace") {
+  if (neonDatabaseEnabled()) return neonRestoreCloudBackup(ownerId, raw, mode);
   const backup = validateBackup(raw);
   const currentSettings = await getWorkspaceSettings(ownerId);
   const currentProposals = await listCloudProposals(ownerId);

@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { cookies } from "next/headers";
 import { SessionUser } from "./types";
 import { cloudEnabled, platformAdminEmail, supabaseAdmin } from "./supabase";
+import { neonDatabaseEnabled, neonSql } from "./neon";
 
 const COOKIE_NAME = "scopeflow_session";
 const maxAge = 60 * 60 * 24 * 14;
@@ -62,6 +63,21 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   const session = decode(value);
   if (!session) return null;
   if (!cloudEnabled()) return null;
+
+  if (neonDatabaseEnabled()) {
+    const rows = await neonSql()`select id,name,email,business_name,active,is_admin from sf_accounts where id=${session.id} limit 1`;
+    const data: any = rows[0];
+    if (!data?.active) return null;
+    const email = String(data.email || session.email).toLowerCase();
+    return {
+      id: String(data.id),
+      name: String(data.name || session.name),
+      email,
+      businessName: String(data.business_name || session.businessName || ""),
+      source: "database",
+      isAdmin: Boolean(data.is_admin) || email === platformAdminEmail(),
+    };
+  }
 
   const { data, error } = await supabaseAdmin()
     .from("sf_accounts")

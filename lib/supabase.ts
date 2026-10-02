@@ -7,7 +7,7 @@ export function platformAdminEmail() {
 }
 
 export function cloudEnabled() {
-  return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+  return Boolean(process.env.DATABASE_URL || (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY));
 }
 
 export function publicAuthEnabled() {
@@ -23,8 +23,10 @@ export function supabaseAdmin() {
 
 export function friendlyDatabaseError(error: unknown) {
   const message = String((error as any)?.message || error || "Database request failed");
-  if (message.includes("sf_accounts") || message.includes("sf_workspaces") || message.includes("schema cache") || message.includes("PGRST205")) {
-    return "Database setup is incomplete. Run supabase/schema.sql in the Supabase project connected to this deployment.";
+  if (message.includes("sf_accounts") || message.includes("sf_workspaces") || message.includes("schema cache") || message.includes("PGRST205") || message.includes("relation") && message.includes("does not exist")) {
+    return process.env.DATABASE_URL
+      ? "Neon database setup is incomplete. Apply the ScopeFlow Neon schema to the configured DATABASE_URL."
+      : "Database setup is incomplete. Run supabase/schema.sql in the Supabase project connected to this deployment.";
   }
   return message;
 }
