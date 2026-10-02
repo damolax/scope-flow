@@ -170,6 +170,7 @@ export default function MainApp() {
     if (proposal.status === "needs_response") return true;
     if (proposal.status === "awaiting_client" && isExpired(proposal)) return true;
     if (proposal.status !== "approved") return false;
+    if (proposal.delivery?.status === "changes_requested") return true;
     const invoices = activeInvoices(proposal);
     if (!invoices.length) return true;
     if (invoices.some((invoice) => invoice.status === "payment_reported")) return true;
@@ -318,7 +319,7 @@ ${proposal.company.name}`);
       ...structuredClone(source), id: uid(), publicToken: uid(), proposalNumber: `${workspace.company.proposalPrefix}-${nextProposalSequence()}`,
       title: `${source.title} copy`, status: "draft", responseState: "none", archived: false, approval: undefined,
       priceRequest: undefined, invoice: undefined, invoices: [], approvedSnapshot: undefined, clientNote: "", ownerResponseNote: "",
-      delivery: { ...(source.delivery || blankProposal(workspace).delivery!), status: "awaiting_payment", paymentConfirmedAt: undefined, countdownStartedAt: undefined, deadlineAt: undefined, pausedAt: undefined, pausedRemainingMs: undefined, pauseReason: undefined, deliveredAt: undefined, completedAt: undefined },
+      delivery: { ...(source.delivery || blankProposal(workspace).delivery!), status: "awaiting_payment", paymentConfirmedAt: undefined, countdownStartedAt: undefined, deadlineAt: undefined, pausedAt: undefined, pausedRemainingMs: undefined, pauseReason: undefined, deliveredAt: undefined, completedAt: undefined, completedItemIds: [], submissionNote: undefined, submittedAt: undefined, clientReviewNote: undefined, changesRequestedAt: undefined, acceptedAt: undefined, acceptedBy: undefined, acceptedEmail: undefined },
       version: 1, history: [{ id: uid(), version: 1, action: "Proposal duplicated", detail: `Created from ${source.proposalNumber}.`, at: created, actor: "owner" }],
       createdAt: created, updatedAt: created, sentAt: undefined, firstViewedAt: undefined, lastViewedAt: undefined, viewCount: 0,
       items: source.items.map((item) => ({ ...item, id: uid(), clientOfferUnitPrice: undefined, ownerCounterUnitPrice: undefined, acceptedUnitPrice: undefined, acceptanceProbability: undefined })),
@@ -511,21 +512,70 @@ ${proposal.company.name}`);
     await updateInvoice(proposal, invoice.id, { archived: false, linkEnabled: true }, "Invoice restored");
   }
 
-  async function reportProjectAction(proposalInput: Proposal, action: "start" | "pause" | "resume" | "extend" | "review" | "deliver" | "complete", value?: string | number) {
+  async function reportProjectAction(proposalInput: Proposal, action: "start" | "pause" | "resume" | "extend" | "toggle_item" | "submit", value?: string | number) {
     let proposal = normalizeProposal(proposalInput);
     const now = new Date().toISOString();
     let event = "";
-    if (action === "start") { proposal.delivery = startDelivery(proposal.delivery!, now, "in_progress"); event = "project_started"; }
-    if (action === "pause") { proposal.delivery = pauseDelivery(proposal.delivery!, String(value || "Waiting for client information"), now); event = "project_paused"; }
-    if (action === "resume") { proposal.delivery = resumeDelivery(proposal.delivery!, now); event = "project_resumed"; }
-    if (action === "extend") { proposal.delivery = extendDelivery(proposal.delivery!, Number(value || 1), now); event = "schedule_updated"; }
-    if (action === "review") { proposal.delivery = { ...proposal.delivery!, status: "ready_for_review" }; event = "ready_for_review"; }
-    if (action === "deliver") { proposal.delivery = { ...proposal.delivery!, status: "delivered", deliveredAt: now }; event = "delivered"; }
-    if (action === "complete") { proposal.delivery = { ...proposal.delivery!, status: "completed", completedAt: now }; }
-    proposal = addHistory(proposal, {
-      start: "Project started", pause: "Countdown paused", resume: "Countdown resumed", extend: "Delivery extended", review: "Ready for review", deliver: "Project delivered", complete: "Project completed",
-    }[action], String(value || "Project status updated."), "owner");
-    const saved = await persistProposal(proposal, "Project updated");
+    let historyAction = "Project updated";
+    let historyDetail = String(value || "Project status updated.");
+
+    if (action === "start") {
+      proposal.delivery = startDelivery(proposal.delivery!, now, "in_progress");
+      event = "project_started";
+      historyAction = "Project started";
+    }
+    if (action === "pause") {
+      proposal.delivery = pauseDelivery(proposal.delivery!, String(value || "Waiting for client information"), now);
+      event = "project_paused";
+      historyAction = "Countdown paused";
+    }
+    if (action === "resume") {
+      proposal.delivery = resumeDelivery(proposal.delivery!, now);
+      event = "project_resumed";
+      historyAction = "Countdown resumed";
+    }
+    if (action === "extend") {
+      proposal.delivery = extendDelivery(proposal.delivery!, Number(value || 1), now);
+      event = "schedule_updated";
+      historyAction = "Delivery extended";
+    }
+    if (action === "toggle_item") {
+      const itemId = String(value || "");
+      const completed = new Set(proposal.delivery?.completedItemIds || []);
+      if (completed.has(itemId)) completed.delete(itemId); else completed.add(itemId);
+      proposal.delivery = { ...proposal.delivery!, completedItemIds: Array.from(completed) };
+      historyAction = completed.has(itemId) ? "Service marked done" : "Service reopened";
+      const service = (proposal.approvedSnapshot?.items || proposal.items).find((item) => item.id === itemId);
+      historyDetail = service?.title || "Project service";
+    }
+    if (action === "submit") {
+      const orderedItems = proposal.approvedSnapshot?.items || proposal.items.filter((item) => !item.optional || item.selected);
+      const completed = new Set(proposal.delivery?.completedItemIds || []);
+      if (!orderedItems.length || orderedItems.some((item) => !completed.has(item.id))) {
+        show("Mark every ordered service as done before submitting the project.", "error");
+        return;
+      }
+      const note = String(value || "").trim();
+      if (!note) {
+        show("Add a delivery note before submitting the project.", "error");
+        return;
+      }
+      proposal.delivery = {
+        ...proposal.delivery!,
+        status: "delivered",
+        deliveredAt: now,
+        submittedAt: now,
+        submissionNote: note,
+        clientReviewNote: undefined,
+        changesRequestedAt: undefined,
+      };
+      event = "delivered";
+      historyAction = "Project submitted";
+      historyDetail = note;
+    }
+
+    proposal = addHistory(proposal, historyAction, historyDetail, "owner");
+    const saved = await persistProposal(proposal, action === "submit" ? "Project submitted to client" : "Project updated");
     if (saved && event) await notifyClient(saved, event, undefined, typeof value === "string" ? value : undefined, true);
   }
 
@@ -689,7 +739,7 @@ function Dashboard({ proposals, attention, openProposal, createProposal, company
   const drafts = proposals.filter((p) => p.status === "draft").length;
   const approvedValue = proposals.filter((p) => p.status === "approved").reduce((sum, p) => sum + totalsFor(p.approvedSnapshot || p).total, 0);
   const currentProjects = proposals
-    .filter((proposal) => proposal.status === "approved" && proposal.delivery?.enabled && !["completed"].includes(proposal.delivery.status))
+    .filter((proposal) => proposal.status === "approved" && proposal.delivery?.enabled && !["accepted", "completed"].includes(proposal.delivery.status))
     .sort((a, b) => new Date(a.delivery?.deadlineAt || "9999-12-31").getTime() - new Date(b.delivery?.deadlineAt || "9999-12-31").getTime());
   return <div className="page-content">
     <section className="hero-strip"><div><span className="eyebrow">Proposal and delivery workspace</span><h1>Move every client from offer to delivery.</h1><p>Create a clear proposal, lock the agreement, issue invoices and track the delivery countdown after payment is confirmed.</p></div><button className="primary" onClick={createProposal}><FilePlus2 size={19} /> Create proposal</button></section>
