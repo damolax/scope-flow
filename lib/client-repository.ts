@@ -135,13 +135,36 @@ export const proposalsRepository = {
         proposal.clientNote = String(payload.note || "");
         proposal.approval = { signedBy: String(payload.signedBy || ""), email: String(payload.email || ""), signedAt: now, note: String(payload.note || "Approved with the selected scope."), termsAccepted: true, reference: approvalReference(proposal) };
         proposal.approvedSnapshot = approvedSnapshotFor(proposal);
-      } else {
+      } else if (payload.action === "request") {
         const hasPriceRequest = proposal.items.some((item) => item.clientOfferUnitPrice !== undefined);
         proposal = addHistory(proposal, hasPriceRequest ? "Price request received" : "Change request received", String(payload.note || "Client requested a revision."), "client");
         proposal.status = "needs_response";
         proposal.responseState = hasPriceRequest ? "price_request" : "change_request";
         proposal.clientNote = String(payload.note || "");
         if (hasPriceRequest) proposal.priceRequest = { requestedBy: String(payload.signedBy || ""), email: String(payload.email || ""), requestedAt: now, note: String(payload.note || ""), originalTotal: totalsFor(proposal, "accepted").total, requestedTotal: totalsFor(proposal, "client_offer").total };
+      } else if (payload.action === "accept_project") {
+        if (proposal.status !== "approved" || proposal.delivery?.status !== "delivered") throw new Error("This project is not awaiting acceptance.");
+        proposal.delivery = {
+          ...proposal.delivery,
+          status: "accepted",
+          acceptedAt: now,
+          acceptedBy: String(payload.signedBy || proposal.client.name || "Client"),
+          acceptedEmail: String(payload.email || proposal.client.email || ""),
+          clientReviewNote: String(payload.note || ""),
+          completedAt: now,
+        };
+        proposal = addHistory(proposal, "Project accepted", `${String(payload.signedBy || proposal.client.name || "Client")} accepted the delivered project.`, "client");
+      } else if (payload.action === "request_project_changes") {
+        if (proposal.status !== "approved" || proposal.delivery?.status !== "delivered") throw new Error("This project is not awaiting review.");
+        proposal.delivery = {
+          ...proposal.delivery,
+          status: "changes_requested",
+          clientReviewNote: String(payload.note || "Client requested changes."),
+          changesRequestedAt: now,
+        };
+        proposal = addHistory(proposal, "Project changes requested", String(payload.note || "Client requested changes to the submitted project."), "client");
+      } else {
+        throw new Error("Unsupported action");
       }
       return localRepository.save(proposal);
     }

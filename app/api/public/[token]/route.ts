@@ -68,12 +68,15 @@ export async function PATCH(request: Request, context: RouteContext) {
   let proposal = await load(context);
   if (!proposal) return NextResponse.json({ error: "Proposal not found" }, { status: 404 });
   if (proposal.status === "draft") return NextResponse.json({ error: "This proposal has not been sent yet" }, { status: 409 });
-  if (["approved", "closed"].includes(proposal.status)) return NextResponse.json({ error: "This proposal is locked" }, { status: 409 });
-  if (isExpired(proposal)) return NextResponse.json({ error: "This proposal has expired. Ask the business owner to extend it." }, { status: 409 });
+  if (proposal.status === "closed") return NextResponse.json({ error: "This proposal is closed" }, { status: 409 });
 
   const payload = await request.json();
   const now = new Date().toISOString();
-  if (Array.isArray(payload.items)) {
+  const projectReviewAction = ["accept_project", "request_project_changes"].includes(String(payload.action));
+  if (proposal.status === "approved" && !projectReviewAction) return NextResponse.json({ error: "This approved agreement is locked" }, { status: 409 });
+  if (proposal.status !== "approved" && isExpired(proposal)) return NextResponse.json({ error: "This proposal has expired. Ask the business owner to extend it." }, { status: 409 });
+
+  if (Array.isArray(payload.items) && proposal.status !== "approved") {
     const choices = new Map<string, any>(payload.items.map((item: any) => [String(item.id), item]));
     proposal.items = proposal.items.map((item) => {
       const choice = choices.get(item.id);
@@ -94,8 +97,8 @@ export async function PATCH(request: Request, context: RouteContext) {
     });
   }
 
-  const signedBy = String(payload.signedBy || "").trim();
-  const email = String(payload.email || "").trim();
+  const signedBy = String(payload.signedBy || proposal.client.name || "").trim();
+  const email = String(payload.email || proposal.client.email || "").trim();
   const note = String(payload.note || "").trim();
   if (!signedBy || !email) return NextResponse.json({ error: "Name and email are required" }, { status: 400 });
 
@@ -119,6 +122,32 @@ export async function PATCH(request: Request, context: RouteContext) {
     proposal.responseState = hasPriceRequest ? "price_request" : "change_request";
     proposal.clientNote = note;
     proposal.priceRequest = hasPriceRequest ? { requestedBy: signedBy, email, requestedAt: now, note, originalTotal: originalTotals.total, requestedTotal: requestedTotals.total } : undefined;
+  } else if (payload.action === "accept_project") {
+    if (proposal.status !== "approved" || proposal.delivery?.status !== "delivered") {
+      return NextResponse.json({ error: "This project is not awaiting acceptance." }, { status: 409 });
+    }
+    proposal.delivery = {
+      ...proposal.delivery,
+      status: "accepted",
+      acceptedAt: now,
+      acceptedBy: signedBy,
+      acceptedEmail: email,
+      clientReviewNote: note,
+      completedAt: now,
+    };
+    proposal = addHistory(proposal, "Project accepted", `${signedBy} accepted the delivered project.`, "client");
+  } else if (payload.action === "request_project_changes") {
+    if (proposal.status !== "approved" || proposal.delivery?.status !== "delivered") {
+      return NextResponse.json({ error: "This project is not awaiting review." }, { status: 409 });
+    }
+    if (!note) return NextResponse.json({ error: "Please describe the changes you need." }, { status: 400 });
+    proposal.delivery = {
+      ...proposal.delivery,
+      status: "changes_requested",
+      clientReviewNote: note,
+      changesRequestedAt: now,
+    };
+    proposal = addHistory(proposal, "Project changes requested", note, "client");
   } else {
     return NextResponse.json({ error: "Unsupported action" }, { status: 400 });
   }
