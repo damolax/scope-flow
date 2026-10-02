@@ -48,16 +48,23 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      const auth = supabaseBrowser().auth;
       if (mode === "login") {
-        const { data, error: signInError } = await auth.signInWithPassword({ email: email.trim(), password });
-        if (signInError) throw signInError;
-        if (!data.session?.access_token) throw new Error("Could not create a sign-in session.");
-        await establishAppSession(data.session.access_token);
+        const response = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.trim(), password }),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const loginError = new Error(body.error || "Could not sign in.");
+          (loginError as any).code = body.code;
+          throw loginError;
+        }
         window.location.href = "/app";
         return;
       }
 
+      const auth = supabaseBrowser().auth;
       const redirectTo = `${window.location.origin}/auth/callback`;
       const { data, error: signUpError } = await auth.signUp({
         email: email.trim(),
@@ -77,7 +84,7 @@ export default function LoginPage() {
       setPassword("");
     } catch (caught: any) {
       const message = String(caught?.message || "Could not continue");
-      if (message.toLowerCase().includes("email not confirmed")) {
+      if ((caught as any)?.code === "email_not_confirmed" || message.toLowerCase().includes("email not confirmed")) {
         setError("Confirm your email before signing in.");
         setShowResend(true);
       } else {
