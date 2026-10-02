@@ -6,7 +6,7 @@ export function neonDatabaseEnabled() {
   return Boolean(process.env.DATABASE_URL);
 }
 
-export function neonSql() {
+export function neonSql(): any {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("Neon DATABASE_URL is not configured.");
   if (!client) client = neon(url);
