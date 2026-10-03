@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { getCloudProposalByToken, saveCloudProposal } from "@/lib/cloud-store";
+import { getCloudProposalByToken, getProposalOwnerByToken, saveCloudProposal } from "@/lib/cloud-store";
 import { acceptanceProbability, addHistory, approvalReference, approvedSnapshotFor, currentUnitPrice, isExpired, normalizeProposal, totalsFor } from "@/lib/helpers";
-import { cloudEnabled } from "@/lib/supabase";
+import { cloudEnabled } from "@/lib/platform";
 import { Proposal, ProposalItem } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -26,10 +26,9 @@ async function load(context: RouteContext) {
 }
 
 async function savePublicProposal(proposal: Proposal) {
-  const { supabaseAdmin } = await import("@/lib/supabase");
-  const { data, error } = await supabaseAdmin().from("sf_proposals").select("owner_id").eq("public_token", proposal.publicToken).single();
-  if (error) throw error;
-  return saveCloudProposal(String(data.owner_id), proposal);
+  const ownerId = await getProposalOwnerByToken(proposal.publicToken);
+  if (!ownerId) throw new Error("Proposal owner could not be resolved");
+  return saveCloudProposal(ownerId, proposal);
 }
 
 export async function GET(request: Request, context: RouteContext) {

@@ -1,8 +1,8 @@
-import type { User } from "@supabase/supabase-js";
 import { defaultWorkspace } from "./demo";
 import { normalizeProposal, validateBackup } from "./helpers";
+import type { NeonAuthIdentity } from "./neon-auth";
 import { neonSql } from "./neon";
-import { platformAdminEmail, supabaseAdmin } from "./supabase";
+import { platformAdminEmail } from "./platform";
 import type { AdminAccountSummary, StoredAccount } from "./cloud-store";
 import type { BackupRestoreResult, Proposal, ServiceCatalogItem, WorkspaceSettings } from "./types";
 
@@ -33,21 +33,31 @@ async function ensureWorkspace(ownerId: string, businessName: string, email: str
       email,
     },
   };
-  await sql`insert into sf_workspaces (owner_id, data) values (${ownerId}, ${JSON.stringify(settings)}::jsonb) on conflict (owner_id) do nothing`;
+  await sql`
+    insert into sf_workspaces (owner_id, data)
+    values (${ownerId}, ${JSON.stringify(settings)}::jsonb)
+    on conflict (owner_id) do nothing
+  `;
 }
 
-export async function neonEnsureAccountForAuthUser(user: User): Promise<StoredAccount> {
+export async function neonEnsureAccountForAuthUser(user: NeonAuthIdentity, businessNameOverride?: string): Promise<StoredAccount> {
   const email = String(user.email || "").toLowerCase().trim();
   if (!email) throw new Error("The authenticated account does not have an email address.");
-  const metadata = user.user_metadata || {};
-  const name = String(metadata.name || metadata.full_name || email.split("@")[0] || "ScopeFlow user").trim();
-  const businessName = String(metadata.business_name || metadata.businessName || `${name}'s business`).trim();
+  const name = String(user.name || email.split("@")[0] || "ScopeFlow user").trim();
+  const businessName = String(businessNameOverride || `${name}'s business`).trim();
   const isAdmin = email === platformAdminEmail();
   const sql = neonSql();
 
-  let rows = await sql`select id,auth_user_id,name,business_name,email,active,is_admin,created_at,last_sign_in_at from sf_accounts where auth_user_id = ${user.id} limit 1`;
+  let rows = await sql`
+    select id,auth_user_id,name,business_name,email,active,is_admin,created_at,last_sign_in_at
+    from sf_accounts where auth_user_id = ${user.id} limit 1
+  `;
+
   if (!rows.length) {
-    rows = await sql`select id,auth_user_id,name,business_name,email,active,is_admin,created_at,last_sign_in_at from sf_accounts where lower(email) = ${email} limit 1`;
+    rows = await sql`
+      select id,auth_user_id,name,business_name,email,active,is_admin,created_at,last_sign_in_at
+      from sf_accounts where lower(email) = ${email} limit 1
+    `;
   }
 
   if (rows.length) {
@@ -55,14 +65,19 @@ export async function neonEnsureAccountForAuthUser(user: User): Promise<StoredAc
     const active = isAdmin ? true : Boolean(existing.active);
     const updated = await sql`
       update sf_accounts
-      set auth_user_id=${user.id}, name=${name}, business_name=${existing.business_name || businessName},
-          email=${email}, active=${active}, is_admin=${isAdmin || Boolean(existing.is_admin)},
-          last_sign_in_at=now(), updated_at=now()
+      set auth_user_id=${user.id},
+          name=${name},
+          business_name=${businessNameOverride || existing.business_name || businessName},
+          email=${email},
+          active=${active},
+          is_admin=${isAdmin || Boolean(existing.is_admin)},
+          last_sign_in_at=now(),
+          updated_at=now()
       where id=${String(existing.id)}
       returning id,auth_user_id,name,business_name,email,active,is_admin,created_at,last_sign_in_at
     `;
     const account = accountFromRow(updated[0]);
-    await ensureWorkspace(account.id, account.businessName, account.email);
+    if (account.active) await ensureWorkspace(account.id, account.businessName, account.email);
     return account;
   }
 
@@ -110,21 +125,19 @@ export async function neonSetAccountActive(accountId: string, active: boolean) {
 
 export async function neonDeleteOwnAccount(accountId: string) {
   const sql = neonSql();
-  const rows = await sql`select id,auth_user_id,name,business_name,email,active,is_admin,created_at,last_sign_in_at from sf_accounts where id=${accountId} limit 1`;
+  const rows = await sql`
+    select id,auth_user_id,name,business_name,email,active,is_admin,created_at,last_sign_in_at
+    from sf_accounts where id=${accountId} limit 1
+  `;
   if (!rows.length) throw new Error("Account not found.");
   const account = accountFromRow(rows[0]);
-  if (account.isAdmin || account.email === platformAdminEmail()) throw new Error("The protected platform administrator account cannot be deleted.");
-  if (!account.authUserId) throw new Error("This account is not connected to a valid authentication record.");
+  if (account.isAdmin || account.email === platformAdminEmail()) {
+    throw new Error("The protected platform administrator account cannot be deleted.");
+  }
 
   await sql`update sf_accounts set active=false, updated_at=now() where id=${accountId}`;
-  const { error: authError } = await supabaseAdmin().auth.admin.deleteUser(account.authUserId);
-  if (authError) {
-    await sql`update sf_accounts set active=true, updated_at=now() where id=${accountId}`;
-    throw authError;
-  }
   await sql`delete from sf_proposals where owner_id=${accountId}`;
   await sql`delete from sf_workspaces where owner_id=${accountId}`;
-  await sql`delete from sf_accounts where id=${accountId}`;
   return { deleted: true };
 }
 
@@ -141,6 +154,16 @@ export async function neonGetCloudProposal(ownerId: string, id: string): Promise
 export async function neonGetCloudProposalByToken(token: string): Promise<Proposal | null> {
   const rows = await neonSql()`select data from sf_proposals where public_token=${token} limit 1`;
   return rows[0]?.data ? normalizeProposal(rows[0].data as Proposal) : null;
+}
+
+export async function neonGetProposalOwnerById(id: string): Promise<string | null> {
+  const rows = await neonSql()`select owner_id from sf_proposals where id=${id} limit 1`;
+  return rows[0]?.owner_id ? String(rows[0].owner_id) : null;
+}
+
+export async function neonGetProposalOwnerByToken(token: string): Promise<string | null> {
+  const rows = await neonSql()`select owner_id from sf_proposals where public_token=${token} limit 1`;
+  return rows[0]?.owner_id ? String(rows[0].owner_id) : null;
 }
 
 export async function neonSaveCloudProposal(ownerId: string, proposal: Proposal): Promise<Proposal> {
@@ -165,6 +188,7 @@ export async function neonGetCloudProposalByInvoiceToken(token: string): Promise
   const sql = neonSql();
   const indexed = await sql`select data from sf_proposals where ${token} = any(invoice_tokens) limit 1`;
   if (indexed[0]?.data) return normalizeProposal(indexed[0].data as Proposal);
+
   const legacy = await sql`select data from sf_proposals where public_token=${token} limit 1`;
   if (legacy[0]?.data) {
     const proposal = normalizeProposal(legacy[0].data as Proposal);
@@ -206,11 +230,19 @@ export async function neonRestoreCloudBackup(ownerId: string, raw: unknown, mode
   const backup = validateBackup(raw);
   const currentSettings = await neonGetWorkspaceSettings(ownerId);
   const currentProposals = await neonListCloudProposals(ownerId);
+
   if (mode === "replace") {
     await neonSql()`delete from sf_proposals where owner_id=${ownerId}`;
     await neonSaveWorkspaceSettings(ownerId, backup.workspace);
     for (const proposal of backup.proposals) await neonSaveCloudProposal(ownerId, proposal);
-    const result: BackupRestoreResult = { mode, servicesAdded: backup.workspace.services.length, servicesUpdated: 0, proposalsAdded: backup.proposals.length, proposalsUpdated: 0, proposalsSkipped: 0 };
+    const result: BackupRestoreResult = {
+      mode,
+      servicesAdded: backup.workspace.services.length,
+      servicesUpdated: 0,
+      proposalsAdded: backup.proposals.length,
+      proposalsUpdated: 0,
+      proposalsSkipped: 0,
+    };
     return { settings: backup.workspace, proposals: backup.proposals, result };
   }
 
@@ -218,22 +250,46 @@ export async function neonRestoreCloudBackup(ownerId: string, raw: unknown, mode
   let servicesAdded = 0;
   let servicesUpdated = 0;
   for (const service of backup.workspace.services) {
-    if (serviceMap.has(service.id)) servicesUpdated += 1; else servicesAdded += 1;
+    if (serviceMap.has(service.id)) servicesUpdated += 1;
+    else servicesAdded += 1;
     serviceMap.set(service.id, service);
   }
-  const settings: WorkspaceSettings = { company: { ...currentSettings.company, ...backup.workspace.company }, services: Array.from(serviceMap.values()) };
+
+  const settings: WorkspaceSettings = {
+    company: { ...currentSettings.company, ...backup.workspace.company },
+    services: Array.from(serviceMap.values()),
+  };
   await neonSaveWorkspaceSettings(ownerId, settings);
 
   const proposalMap = new Map(currentProposals.map((proposal) => [proposal.id, proposal]));
   let proposalsAdded = 0;
   let proposalsUpdated = 0;
   let proposalsSkipped = 0;
+
   for (const incoming of backup.proposals.map(normalizeProposal)) {
     const existing = proposalMap.get(incoming.id);
-    if (!existing) { await neonSaveCloudProposal(ownerId, incoming); proposalMap.set(incoming.id, incoming); proposalsAdded += 1; continue; }
-    if (existing.approvedSnapshot && existing.updatedAt >= incoming.updatedAt) { proposalsSkipped += 1; continue; }
-    await neonSaveCloudProposal(ownerId, incoming); proposalMap.set(incoming.id, incoming); proposalsUpdated += 1;
+    if (!existing) {
+      await neonSaveCloudProposal(ownerId, incoming);
+      proposalMap.set(incoming.id, incoming);
+      proposalsAdded += 1;
+      continue;
+    }
+    if (existing.approvedSnapshot && existing.updatedAt >= incoming.updatedAt) {
+      proposalsSkipped += 1;
+      continue;
+    }
+    await neonSaveCloudProposal(ownerId, incoming);
+    proposalMap.set(incoming.id, incoming);
+    proposalsUpdated += 1;
   }
-  const result: BackupRestoreResult = { mode, servicesAdded, servicesUpdated, proposalsAdded, proposalsUpdated, proposalsSkipped };
+
+  const result: BackupRestoreResult = {
+    mode,
+    servicesAdded,
+    servicesUpdated,
+    proposalsAdded,
+    proposalsUpdated,
+    proposalsSkipped,
+  };
   return { settings, proposals: Array.from(proposalMap.values()), result };
 }

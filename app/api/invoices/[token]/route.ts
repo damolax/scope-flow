@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getCloudProposalByInvoiceToken, saveCloudProposal } from "@/lib/cloud-store";
+import { getCloudProposalByInvoiceToken, getProposalOwnerById, saveCloudProposal } from "@/lib/cloud-store";
 import { sendTransactionalEmail, emailLayout } from "@/lib/email";
 import { addHistory, invoiceByToken, normalizeProposal } from "@/lib/helpers";
-import { cloudEnabled, friendlyDatabaseError, supabaseAdmin } from "@/lib/supabase";
+import { cloudEnabled, friendlyDatabaseError } from "@/lib/platform";
 import { Proposal, ProposalItem } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +19,9 @@ function publicProposal(proposal: Proposal): Proposal {
 }
 
 async function savePublicProposal(proposal: Proposal) {
-  const { data, error } = await supabaseAdmin().from("sf_proposals").select("owner_id").eq("id", proposal.id).single();
-  if (error || !data) throw error || new Error("Invoice owner could not be resolved");
-  return saveCloudProposal(String(data.owner_id), proposal);
+  const ownerId = await getProposalOwnerById(proposal.id);
+  if (!ownerId) throw new Error("Invoice owner could not be resolved");
+  return saveCloudProposal(ownerId, proposal);
 }
 
 export async function GET(request: Request, context: RouteContext) {

@@ -48,7 +48,7 @@ create table if not exists public.sf_migration_meta (
 );
 
 insert into public.sf_migration_meta(key,value)
-values ('schema_version','{"source":"scopeflow-supabase","target":"neon","version":1}'::jsonb)
+values ('schema_version','{"source":"scopeflow","target":"neon","version":2,"auth":"neon"}'::jsonb)
 on conflict (key) do update set value=excluded.value, updated_at=now();
 
 update public.sf_accounts
