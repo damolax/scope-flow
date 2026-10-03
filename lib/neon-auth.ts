@@ -4,10 +4,10 @@ export interface NeonAuthIdentity {
   name: string;
 }
 
+export const DEFAULT_NEON_AUTH_BASE_URL = "https://ep-quiet-mode-b53h20vo.neonauth.c-7.us-east-2.aws.neon.tech/scopeflow/auth";
+
 function baseUrl() {
-  const value = process.env.NEON_AUTH_BASE_URL?.replace(/\/$/, "");
-  if (!value) throw new Error("Neon Auth is not configured.");
-  return value;
+  return (process.env.NEON_AUTH_BASE_URL || DEFAULT_NEON_AUTH_BASE_URL).replace(/\/$/, "");
 }
 
 function errorMessage(body: any, fallback: string) {
