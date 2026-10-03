@@ -9,7 +9,7 @@ export function cloudEnabled() {
 }
 
 export function authEnabled() {
-  return Boolean(process.env.NEON_AUTH_BASE_URL);
+  return true;
 }
 
 export function friendlyDatabaseError(error: unknown) {
