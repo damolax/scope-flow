@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { setAccountActive } from "@/lib/cloud-store";
-import { friendlyDatabaseError, platformAdminEmail } from "@/lib/supabase";
+import { friendlyDatabaseError, platformAdminEmail } from "@/lib/platform";
 
 export const dynamic = "force-dynamic";
 type RouteContext = { params: Promise<{ id: string }> };

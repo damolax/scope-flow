@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { deleteCloudProposal, getCloudProposal, saveCloudProposal } from "@/lib/cloud-store";
-import { cloudEnabled } from "@/lib/supabase";
+import { cloudEnabled } from "@/lib/platform";
 import { Proposal } from "@/lib/types";
 
 export const dynamic = "force-dynamic";

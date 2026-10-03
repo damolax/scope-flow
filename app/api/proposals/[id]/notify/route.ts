@@ -3,7 +3,7 @@ import { getSessionUser } from "@/lib/auth";
 import { getCloudProposal, saveCloudProposal } from "@/lib/cloud-store";
 import { emailLayout, sendTransactionalEmail } from "@/lib/email";
 import { activeInvoices, addHistory, dateTimeLabel, invoiceByToken, money, normalizeProposal, remainingTimeLabel } from "@/lib/helpers";
-import { cloudEnabled } from "@/lib/supabase";
+import { cloudEnabled } from "@/lib/platform";
 
 export const dynamic = "force-dynamic";
 type RouteContext = { params: Promise<{ id: string }> };

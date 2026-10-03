@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { listPlatformAccounts } from "@/lib/cloud-store";
-import { friendlyDatabaseError } from "@/lib/supabase";
+import { friendlyDatabaseError } from "@/lib/platform";
 
 export const dynamic = "force-dynamic";
 

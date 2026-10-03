@@ -21,7 +21,6 @@ import {
   CurrencyCode, DeliveryPlan, InvoiceInfo, InvoiceKind, PriceFlexibility, PricingUnit, Proposal, ProposalItem,
   ScopeFlowBackup, ServiceCatalogItem, SessionUser, WorkspaceSettings,
 } from "@/lib/types";
-import { supabaseBrowser } from "@/lib/supabase-browser";
 import LoadingScreen from "./LoadingScreen";
 import ScopeFlowMark from "./ScopeFlowMark";
 
@@ -602,7 +601,6 @@ ${proposal.company.name}`);
   }
 
   async function logout() {
-    try { await supabaseBrowser().auth.signOut(); } catch {}
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.href = "/login";
   }
@@ -659,7 +657,7 @@ ${proposal.company.name}`);
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Could not delete the account.");
-      try { await supabaseBrowser().auth.signOut(); } catch {}
+      await fetch("/api/auth/logout", { method: "POST" });
       window.location.href = "/login?account=deleted";
     } catch (error: any) {
       show(error.message || "Could not delete the account", "error");
