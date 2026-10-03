@@ -1,3 +1,5 @@
+import { neonDatabaseEnabled } from "./neon";
+
 export const DEFAULT_PLATFORM_ADMIN_EMAIL = "oyekunleolalekan3168@gmail.com";
 
 export function platformAdminEmail() {
@@ -5,7 +7,7 @@ export function platformAdminEmail() {
 }
 
 export function cloudEnabled() {
-  return Boolean(process.env.DATABASE_URL);
+  return neonDatabaseEnabled();
 }
 
 export function authEnabled() {
