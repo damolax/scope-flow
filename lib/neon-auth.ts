@@ -19,12 +19,11 @@ function errorMessage(body: any, fallback: string) {
   return message;
 }
 
-async function neonAuthRequest(path: string, body: Record<string, unknown>, origin?: string) {
+async function neonAuthRequest(path: string, body: Record<string, unknown>, _origin?: string) {
   const response = await fetch(`${baseUrl()}/${path.replace(/^\//, "")}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(origin ? { Origin: origin } : {}),
     },
     body: JSON.stringify(body),
     cache: "no-store",
