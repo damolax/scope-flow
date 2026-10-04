@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb, PDFFont, PDFPage } from "pdf-lib";
 import { getCloudProposalByInvoiceToken, getCloudProposalByToken } from "@/lib/cloud-store";
 import { dateLabel, invoiceByToken, itemUnitPrice, money, normalizeProposal, totalsFor } from "@/lib/helpers";
-import { cloudEnabled } from "@/lib/supabase";
+import { cloudEnabled } from "@/lib/platform";
 import { ApprovedSnapshot, InvoiceInfo } from "@/lib/types";
 
 type RouteContext = { params: Promise<{ token: string }> };

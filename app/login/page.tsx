@@ -3,18 +3,7 @@
 import { ArrowRight, CheckCircle2, FileCheck2, Loader2, MailCheck } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { browserAuthConfigured, supabaseBrowser } from "@/lib/supabase-browser";
 import ScopeFlowMark from "@/components/ScopeFlowMark";
-
-async function establishAppSession(accessToken: string) {
-  const response = await fetch("/api/auth/session", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-    body: JSON.stringify({ accessToken }),
-  });
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error || "Could not open your ScopeFlow workspace.");
-}
 
 export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -25,15 +14,24 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showResend, setShowResend] = useState(false);
-  const authConfigured = browserAuthConfigured();
+  const [authConfigured, setAuthConfigured] = useState(true);
 
   useEffect(() => {
     fetch("/api/auth/me", { cache: "no-store" }).then((response) => {
       if (response.ok) window.location.href = "/app";
     });
-    if (new URLSearchParams(window.location.search).get("account") === "deleted") {
-      setNotice("Your ScopeFlow account and workspace were deleted successfully.");
+
+    fetch("/api/config", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((config) => setAuthConfigured(Boolean(config.cloud && config.auth)))
+      .catch(() => setAuthConfigured(false));
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("account") === "deleted") {
+      setNotice("Your ScopeFlow workspace was deleted and the account was disabled.");
+    }
+    if (params.get("reset") === "success") {
+      setNotice("Your password was updated. Sign in with your new password.");
     }
   }, []);
 
@@ -41,74 +39,32 @@ export default function LoginPage() {
     event.preventDefault();
     setError("");
     setNotice("");
-    setShowResend(false);
+
     if (!authConfigured) {
-      setError("Authentication setup is incomplete. Add the public Supabase URL and anon key in Vercel.");
+      setError("Neon authentication setup is incomplete.");
       return;
     }
+
     setLoading(true);
     try {
-      if (mode === "login") {
-        const response = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: email.trim(), password }),
-        });
-        const body = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          const loginError = new Error(body.error || "Could not sign in.");
-          (loginError as any).code = body.code;
-          throw loginError;
-        }
-        window.location.href = "/app";
-        return;
-      }
-
-      const auth = supabaseBrowser().auth;
-      const redirectTo = `${window.location.origin}/auth/callback`;
-      const { data, error: signUpError } = await auth.signUp({
-        email: email.trim(),
-        password,
-        options: {
-          emailRedirectTo: redirectTo,
-          data: { name: name.trim(), business_name: businessName.trim() },
-        },
+      const endpoint = mode === "login" ? "/api/auth/login" : "/api/auth/signup";
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          mode === "login"
+            ? { email: email.trim(), password }
+            : { name: name.trim(), businessName: businessName.trim(), email: email.trim(), password },
+        ),
       });
-      if (signUpError) throw signUpError;
-      if (data.session?.access_token) {
-        await establishAppSession(data.session.access_token);
-        window.location.href = "/app";
-        return;
-      }
-      setNotice("Check your email to confirm your account. The confirmation link will open your new workspace.");
-      setPassword("");
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Could not continue.");
+      window.location.href = "/app";
     } catch (caught: any) {
-      const message = String(caught?.message || "Could not continue");
-      if ((caught as any)?.code === "email_not_confirmed" || message.toLowerCase().includes("email not confirmed")) {
-        setError("Confirm your email before signing in.");
-        setShowResend(true);
-      } else {
-        setError(message.includes("Invalid login credentials") ? "Incorrect email or password." : message);
-      }
+      setError(String(caught?.message || "Could not continue."));
     } finally {
       setLoading(false);
     }
-  }
-
-  async function resendConfirmation() {
-    if (!email || !authConfigured) return;
-    setLoading(true); setError("");
-    try {
-      const { error: resendError } = await supabaseBrowser().auth.resend({
-        type: "signup",
-        email: email.trim(),
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
-      });
-      if (resendError) throw resendError;
-      setNotice("A new confirmation email has been sent.");
-    } catch (caught: any) {
-      setError(caught?.message || "Could not resend the confirmation email.");
-    } finally { setLoading(false); }
   }
 
   return <main className="login-page">
@@ -125,11 +81,10 @@ export default function LoginPage() {
         <label><span>Email address</span><input autoFocus type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" /></label>
         <label><span>Password</span><input type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={mode === "signup" ? "At least 8 characters" : "Enter your password"} /></label>
         {mode === "login" && <div className="auth-help-row"><Link href="/forgot-password">Forgot password?</Link></div>}
-        {!authConfigured && <div className="login-error">Authentication setup is incomplete. Add the public Supabase URL and anon key in Vercel.</div>}
+        {!authConfigured && <div className="login-error">Neon authentication setup is incomplete.</div>}
         {error && <div className="login-error">{error}</div>}
         {notice && <div className="login-notice"><MailCheck size={18} /><span>{notice}</span></div>}
         <button className="login-submit" disabled={!authConfigured || !email || !password || (mode === "signup" && (!name || !businessName || password.length < 8)) || loading}>{loading ? <><Loader2 className="spin" size={18} /> Working…</> : <>{mode === "signup" ? "Create my workspace" : "Open dashboard"} <ArrowRight size={18} /></>}</button>
-        {(showResend || (notice && mode === "signup")) && <button type="button" className="auth-link-button" disabled={loading} onClick={resendConfirmation}>Resend confirmation email</button>}
       </form>
     </section>
   </main>;

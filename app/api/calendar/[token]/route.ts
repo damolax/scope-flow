@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCloudProposalByToken } from "@/lib/cloud-store";
 import { dateTimeLabel, normalizeProposal } from "@/lib/helpers";
-import { cloudEnabled } from "@/lib/supabase";
+import { cloudEnabled } from "@/lib/platform";
 
 export const dynamic = "force-dynamic";
 type RouteContext = { params: Promise<{ token: string }> };

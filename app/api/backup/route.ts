@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { restoreCloudBackup } from "@/lib/cloud-store";
-import { cloudEnabled, friendlyDatabaseError } from "@/lib/supabase";
+import { cloudEnabled, friendlyDatabaseError } from "@/lib/platform";
 
 export const dynamic = "force-dynamic";
 
